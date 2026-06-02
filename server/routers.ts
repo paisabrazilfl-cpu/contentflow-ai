@@ -5,6 +5,8 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "./db";
+import { generateContent } from "./ai-content";
+import { runPublishingWorker } from "./publishing-worker";
 
 export const appRouter = router({
   system: systemRouter,
@@ -125,6 +127,48 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       await db.updateContentStatus(input.id, input.status);
       return { success: true };
+    }),
+    // AI Content Generation
+    generate: protectedProcedure.input(z.object({
+      platform: z.string(),
+      contentType: z.string().default("social"),
+      topic: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) throw new TRPCError({ code: 'NOT_FOUND', message: 'Business not found. Complete onboarding first.' });
+      const generated = await generateContent({
+        platform: input.platform,
+        contentType: input.contentType,
+        topic: input.topic,
+        business,
+      });
+      // Save to content queue
+      await db.createContentItem({
+        businessId: business.id,
+        platform: input.platform,
+        contentType: input.contentType,
+        title: generated.title,
+        content: generated.content,
+        scheduledFor: new Date(Date.now() + 3600000), // 1 hour from now
+      });
+      // Log activity
+      await db.logActivity({
+        businessId: business.id,
+        action: `AI generated ${input.contentType} for ${input.platform}`,
+        platform: input.platform,
+        description: generated.title,
+      });
+      return generated;
+    }),
+    // Publishing worker - processes queued content via the automated publishing engine
+    processQueue: protectedProcedure.mutation(async ({ ctx }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) throw new TRPCError({ code: 'NOT_FOUND' });
+      return runPublishingWorker(business.id);
+    }),
+    // Admin: run worker across all businesses
+    runWorkerAll: adminProcedure.mutation(async () => {
+      return runPublishingWorker();
     }),
   }),
 

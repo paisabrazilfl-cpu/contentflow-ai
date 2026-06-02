@@ -127,6 +127,12 @@ export async function createContentItem(data: InsertContentItem) {
   await db.insert(contentQueue).values(data);
 }
 
+export async function updateContentItem(id: number, data: Partial<InsertContentItem>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentQueue).set(data).where(eq(contentQueue.id, id));
+}
+
 export async function updateContentStatus(id: number, status: string, errorLog?: string) {
   const db = await getDb();
   if (!db) return;

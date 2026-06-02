@@ -2,15 +2,15 @@ import AppLayout from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Plus, Clock, CheckCircle, AlertCircle, Calendar, FileText,
-  Send, Eye, Edit, Trash2, MoreHorizontal, Filter, Zap
+  Send, Eye, Edit, Trash2, MoreHorizontal, Filter, Zap, Loader2
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -19,36 +19,29 @@ import { trpc } from "@/lib/trpc";
 const queueItems = [
   { id: 1, title: "5 Tips for Better SEO in 2026", platform: "wordpress", type: "blog", status: "pending", scheduledFor: "Jun 3, 2026 9:00 AM" },
   { id: 2, title: "New summer collection spotlight", platform: "instagram", type: "social", status: "pending", scheduledFor: "Jun 3, 2026 12:00 PM" },
-  { id: 3, title: "Behind the scenes of our process", platform: "tiktok", type: "video", status: "processing", scheduledFor: "Jun 3, 2026 3:00 PM" },
-  { id: 4, title: "Weekly industry roundup", platform: "reddit", type: "social", status: "pending", scheduledFor: "Jun 4, 2026 10:00 AM" },
-  { id: 5, title: "Google Business update", platform: "google", type: "social", status: "approved", scheduledFor: "Jun 4, 2026 8:00 AM" },
+  { id: 3, title: "How AI is changing local search", platform: "youtube", type: "video", status: "generating", scheduledFor: "Jun 4, 2026 10:00 AM" },
+  { id: 4, title: "Weekly industry roundup thread", platform: "reddit", type: "social", status: "pending", scheduledFor: "Jun 4, 2026 3:00 PM" },
+  { id: 5, title: "Behind the scenes at our office", platform: "tiktok", type: "video", status: "review", scheduledFor: "Jun 5, 2026 6:00 PM" },
 ];
 
 const publishedItems = [
-  { id: 6, title: "How AI is Transforming Local SEO", platform: "wordpress", type: "blog", status: "published", publishedAt: "Jun 1, 2026", engagement: { views: 342, clicks: 28 } },
-  { id: 7, title: "Customer success story highlight", platform: "instagram", type: "social", status: "published", publishedAt: "Jun 1, 2026", engagement: { views: 1240, likes: 89 } },
-  { id: 8, title: "Quick tip: Optimize your GBP listing", platform: "youtube", type: "video", status: "published", publishedAt: "May 31, 2026", engagement: { views: 567, likes: 45 } },
-  { id: 9, title: "AMA about content marketing", platform: "reddit", type: "social", status: "published", publishedAt: "May 30, 2026", engagement: { views: 2100, comments: 34 } },
+  { id: 6, title: "Why Schema Markup Matters for Local SEO", platform: "wordpress", type: "blog", publishedAt: "Jun 1, 2026 9:00 AM", engagement: { views: 342, clicks: 28 } },
+  { id: 7, title: "Customer success story: 3x traffic growth", platform: "instagram", type: "social", publishedAt: "May 31, 2026 12:00 PM", engagement: { views: 1240, likes: 89 } },
+  { id: 8, title: "5 Google Business tips you need to know", platform: "google", type: "social", publishedAt: "May 30, 2026 10:00 AM", engagement: { views: 567, clicks: 45 } },
 ];
-
-const calendarDays = Array.from({ length: 30 }, (_, i) => ({
-  day: i + 1,
-  posts: Math.floor(Math.random() * 4),
-}));
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-  processing: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  approved: "bg-green-500/10 text-green-400 border-green-500/20",
-  published: "bg-primary/10 text-primary border-primary/20",
+  generating: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  review: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  published: "bg-green-500/10 text-green-400 border-green-500/20",
   failed: "bg-red-500/10 text-red-400 border-red-500/20",
 };
 
 const platformColors: Record<string, string> = {
   google: "bg-blue-500/10 text-blue-400",
   instagram: "bg-pink-500/10 text-pink-400",
-  meta: "bg-indigo-500/10 text-indigo-400",
-  tiktok: "bg-pink-500/10 text-pink-400",
+  tiktok: "bg-violet-500/10 text-violet-400",
   youtube: "bg-red-500/10 text-red-400",
   reddit: "bg-orange-500/10 text-orange-400",
   wordpress: "bg-cyan-500/10 text-cyan-400",
@@ -56,10 +49,78 @@ const platformColors: Record<string, string> = {
 
 export default function ContentHub() {
   const [createOpen, setCreateOpen] = useState(false);
+  const [genPlatform, setGenPlatform] = useState("");
+  const [genType, setGenType] = useState("");
+  const [genTopic, setGenTopic] = useState("");
+  const [genContent, setGenContent] = useState("");
+  const [genTitle, setGenTitle] = useState("");
+
   const { data: queueData } = trpc.content.queue.useQuery();
+  const utils = trpc.useUtils();
+
   const createMutation = trpc.content.create.useMutation({
-    onSuccess: () => { setCreateOpen(false); toast.success("Post added to queue"); },
+    onSuccess: () => {
+      setCreateOpen(false);
+      toast.success("Post added to queue");
+      utils.content.queue.invalidate();
+      resetForm();
+    },
   });
+
+  const generateMutation = trpc.content.generate.useMutation({
+    onSuccess: (data) => {
+      setGenTitle(data.title);
+      setGenContent(data.content);
+      toast.success("Content generated by AI!");
+      utils.content.queue.invalidate();
+    },
+    onError: (err) => {
+      toast.error(`Generation failed: ${err.message}`);
+    },
+  });
+
+  const processQueueMutation = trpc.content.processQueue.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Processed ${data.processed} items, ${data.failed} failed`);
+      utils.content.queue.invalidate();
+    },
+    onError: (err) => {
+      toast.error(`Queue processing failed: ${err.message}`);
+    },
+  });
+
+  const resetForm = () => {
+    setGenPlatform("");
+    setGenType("");
+    setGenTopic("");
+    setGenContent("");
+    setGenTitle("");
+  };
+
+  const handleAIGenerate = () => {
+    if (!genPlatform) {
+      toast.error("Please select a platform first");
+      return;
+    }
+    generateMutation.mutate({
+      platform: genPlatform,
+      contentType: genType || "social",
+      topic: genTopic || undefined,
+    });
+  };
+
+  const handleAddToQueue = () => {
+    if (!genPlatform) {
+      toast.error("Please select a platform");
+      return;
+    }
+    createMutation.mutate({
+      platform: genPlatform,
+      contentType: genType || "social",
+      title: genTitle || undefined,
+      content: genContent || undefined,
+    });
+  };
 
   return (
     <AppLayout>
@@ -69,64 +130,107 @@ export default function ContentHub() {
             <h1 className="text-2xl font-bold">Content Hub</h1>
             <p className="text-muted-foreground text-sm mt-1">Manage your content queue, calendar, and publishing history</p>
           </div>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="gradient-orange text-black font-semibold hover:opacity-90">
-                <Plus className="w-4 h-4 mr-2" /> Create Post
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-card border-border max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Create New Post</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 mt-4">
-                <div>
-                  <Label>Title</Label>
-                  <Input placeholder="Post title..." className="mt-1.5 bg-secondary border-border" />
-                </div>
-                <div>
-                  <Label>Content</Label>
-                  <Textarea placeholder="Write your content or let AI generate it..." className="mt-1.5 bg-secondary border-border min-h-[120px]" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => processQueueMutation.mutate()}
+              disabled={processQueueMutation.isPending}
+            >
+              {processQueueMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              Process Queue
+            </Button>
+            <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) resetForm(); }}>
+              <DialogTrigger asChild>
+                <Button className="gradient-orange text-black font-semibold hover:opacity-90">
+                  <Plus className="w-4 h-4 mr-2" /> Create Post
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-card border-border max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Create New Post</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
                   <div>
-                    <Label>Platform</Label>
-                    <Select>
-                      <SelectTrigger className="mt-1.5 bg-secondary border-border"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="google">Google Business</SelectItem>
-                        <SelectItem value="instagram">Instagram</SelectItem>
-                        <SelectItem value="tiktok">TikTok</SelectItem>
-                        <SelectItem value="youtube">YouTube</SelectItem>
-                        <SelectItem value="reddit">Reddit</SelectItem>
-                        <SelectItem value="wordpress">WordPress</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Topic / Title</Label>
+                    <Input
+                      placeholder="e.g. 5 SEO tips for local businesses..."
+                      className="mt-1.5 bg-secondary border-border"
+                      value={genTitle}
+                      onChange={(e) => setGenTitle(e.target.value)}
+                    />
                   </div>
                   <div>
-                    <Label>Content Type</Label>
-                    <Select>
-                      <SelectTrigger className="mt-1.5 bg-secondary border-border"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="blog">Blog</SelectItem>
-                        <SelectItem value="social">Social</SelectItem>
-                        <SelectItem value="video">Video</SelectItem>
-                        <SelectItem value="schema">Schema</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Content</Label>
+                    <Textarea
+                      placeholder="Write your content or click 'AI Generate' to create it automatically..."
+                      className="mt-1.5 bg-secondary border-border min-h-[120px]"
+                      value={genContent}
+                      onChange={(e) => setGenContent(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Platform</Label>
+                      <Select value={genPlatform} onValueChange={setGenPlatform}>
+                        <SelectTrigger className="mt-1.5 bg-secondary border-border"><SelectValue placeholder="Select" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="google">Google Business</SelectItem>
+                          <SelectItem value="instagram">Instagram</SelectItem>
+                          <SelectItem value="tiktok">TikTok</SelectItem>
+                          <SelectItem value="youtube">YouTube</SelectItem>
+                          <SelectItem value="reddit">Reddit</SelectItem>
+                          <SelectItem value="wordpress">WordPress</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Content Type</Label>
+                      <Select value={genType} onValueChange={setGenType}>
+                        <SelectTrigger className="mt-1.5 bg-secondary border-border"><SelectValue placeholder="Select" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="blog">Blog</SelectItem>
+                          <SelectItem value="social">Social</SelectItem>
+                          <SelectItem value="video">Video</SelectItem>
+                          <SelectItem value="schema">Schema</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Topic Hint (optional)</Label>
+                    <Input
+                      placeholder="Give the AI a topic direction..."
+                      className="mt-1.5 bg-secondary border-border"
+                      value={genTopic}
+                      onChange={(e) => setGenTopic(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={handleAIGenerate}
+                      disabled={generateMutation.isPending}
+                    >
+                      {generateMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Zap className="w-4 h-4 mr-2" />
+                      )}
+                      {generateMutation.isPending ? "Generating..." : "AI Generate"}
+                    </Button>
+                    <Button
+                      className="flex-1 gradient-orange text-black font-semibold hover:opacity-90"
+                      onClick={handleAddToQueue}
+                      disabled={createMutation.isPending}
+                    >
+                      <Send className="w-4 h-4 mr-2" /> Add to Queue
+                    </Button>
                   </div>
                 </div>
-                <div className="flex gap-3 pt-2">
-                  <Button variant="outline" className="flex-1" onClick={() => { toast.info("AI generation coming soon"); }}>
-                    <Zap className="w-4 h-4 mr-2" /> AI Generate
-                  </Button>
-                  <Button className="flex-1 gradient-orange text-black font-semibold hover:opacity-90" onClick={() => { setCreateOpen(false); toast.success("Post added to queue"); }}>
-                    <Send className="w-4 h-4 mr-2" /> Add to Queue
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <Tabs defaultValue="queue" className="space-y-4">
@@ -144,40 +248,25 @@ export default function ContentHub() {
 
           {/* Queue Tab */}
           <TabsContent value="queue" className="space-y-3">
-            <div className="flex items-center gap-3 mb-4">
-              <Button variant="outline" size="sm"><Filter className="w-4 h-4 mr-2" /> Filter</Button>
-              <Select>
-                <SelectTrigger className="w-[150px] bg-secondary border-border h-9"><SelectValue placeholder="All platforms" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All platforms</SelectItem>
-                  <SelectItem value="google">Google</SelectItem>
-                  <SelectItem value="instagram">Instagram</SelectItem>
-                  <SelectItem value="tiktok">TikTok</SelectItem>
-                  <SelectItem value="youtube">YouTube</SelectItem>
-                  <SelectItem value="reddit">Reddit</SelectItem>
-                  <SelectItem value="wordpress">WordPress</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             {queueItems.map((item) => (
-              <Card key={item.id} className="bg-card border-border hover:border-primary/30 transition-colors">
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${platformColors[item.platform] || "bg-secondary"}`}>
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{item.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-muted-foreground capitalize">{item.platform}</span>
-                        <span className="text-xs text-muted-foreground">•</span>
-                        <span className="text-xs text-muted-foreground">{item.scheduledFor}</span>
+              <Card key={item.id} className="bg-card border-border">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${platformColors[item.platform] || "bg-muted"}`}>
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{item.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className={`text-[10px] ${platformColors[item.platform]}`}>{item.platform}</Badge>
+                          <Badge variant="outline" className="text-[10px]">{item.type}</Badge>
+                          <span className="text-xs text-muted-foreground">{item.scheduledFor}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className={statusColors[item.status]}>{item.status}</Badge>
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={statusColors[item.status]}>{item.status}</Badge>
                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><Eye className="w-4 h-4" /></Button>
                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><Edit className="w-4 h-4" /></Button>
                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive"><Trash2 className="w-4 h-4" /></Button>
@@ -192,26 +281,22 @@ export default function ContentHub() {
           <TabsContent value="published" className="space-y-3">
             {publishedItems.map((item) => (
               <Card key={item.id} className="bg-card border-border">
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${platformColors[item.platform] || "bg-secondary"}`}>
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{item.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-muted-foreground capitalize">{item.platform}</span>
-                        <span className="text-xs text-muted-foreground">•</span>
-                        <span className="text-xs text-muted-foreground">{item.publishedAt}</span>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${platformColors[item.platform] || "bg-muted"}`}>
+                        <CheckCircle className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{item.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className={`text-[10px] ${platformColors[item.platform]}`}>{item.platform}</Badge>
+                          <span className="text-xs text-muted-foreground">Published {item.publishedAt}</span>
+                          <span className="text-xs text-muted-foreground">• {item.engagement.views} views</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-sm font-medium">{Object.values(item.engagement)[0]?.toLocaleString()}</p>
-                      <p className="text-xs text-muted-foreground">{Object.keys(item.engagement)[0]}</p>
-                    </div>
-                    <Badge variant="outline" className={statusColors[item.status]}>{item.status}</Badge>
+                    <Badge variant="outline" className={statusColors.published}>published</Badge>
                   </div>
                 </CardContent>
               </Card>
@@ -221,26 +306,21 @@ export default function ContentHub() {
           {/* Calendar Tab */}
           <TabsContent value="calendar">
             <Card className="bg-card border-border">
-              <CardHeader>
-                <CardTitle className="text-base">June 2026</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-7 gap-1">
+              <CardContent className="p-6">
+                <div className="grid grid-cols-7 gap-1 text-center">
                   {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
-                    <div key={d} className="text-center text-xs text-muted-foreground py-2 font-medium">{d}</div>
+                    <div key={d} className="text-xs font-medium text-muted-foreground py-2">{d}</div>
                   ))}
-                  {calendarDays.map((day) => (
-                    <div key={day.day} className="aspect-square border border-border/50 rounded-lg p-1 hover:border-primary/50 transition-colors cursor-pointer">
-                      <div className="text-xs text-muted-foreground">{day.day}</div>
-                      {day.posts > 0 && (
-                        <div className="mt-1 flex gap-0.5">
-                          {Array.from({ length: Math.min(day.posts, 3) }).map((_, i) => (
-                            <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary" />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {Array.from({ length: 30 }, (_, i) => {
+                    const day = i + 1;
+                    const hasContent = [3, 4, 5, 7, 10, 12, 15, 18, 20, 22, 25, 28].includes(day);
+                    return (
+                      <div key={i} className={`p-2 rounded-lg text-sm ${hasContent ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:bg-secondary"} ${day === 2 ? "ring-1 ring-primary" : ""}`}>
+                        {day}
+                        {hasContent && <div className="w-1 h-1 rounded-full bg-primary mx-auto mt-1" />}
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -250,4 +330,3 @@ export default function ContentHub() {
     </AppLayout>
   );
 }
-
