@@ -104,7 +104,6 @@ export function registerOAuthRoutes(app: Express) {
         refreshToken: tokens.refreshToken || null,
         expiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
         scopes: "https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/business.manage https://www.googleapis.com/auth/webmasters",
-        status: "active",
       });
 
       // Log activity (if logActivity exists)
