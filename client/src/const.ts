@@ -1,14 +1,27 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
-// Generate login URL at runtime so redirect URI reflects the current origin.
-export const getLoginUrl = (returnPath?: string) => {
+/**
+ * Generate the Manus OAuth login URL.
+ *
+ * If VITE_APP_URL is set (e.g. on Render pointing to the Manus domain),
+ * the OAuth callback will use that domain — ensuring the redirect_uri
+ * matches whatever is registered in each OAuth provider's console.
+ *
+ * On the Manus deployment itself, VITE_APP_URL is not needed because
+ * window.location.origin is already the authorized domain.
+ */
+export const getLoginUrl = () => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
-  const redirectUri = `${window.location.origin}/api/oauth/callback`;
-  const statePayload = returnPath
-    ? JSON.stringify({ redirectUri, returnPath })
-    : JSON.stringify({ redirectUri });
-  const state = btoa(statePayload);
+
+  // Use VITE_APP_URL override when provided (e.g. Render → Manus domain),
+  // otherwise fall back to the current origin.
+  const appOrigin =
+    (import.meta.env.VITE_APP_URL as string | undefined)?.replace(/\/$/, "") ||
+    window.location.origin;
+
+  const redirectUri = `${appOrigin}/api/oauth/callback`;
+  const state = btoa(redirectUri);
 
   const url = new URL(`${oauthPortalUrl}/app-auth`);
   url.searchParams.set("appId", appId);
