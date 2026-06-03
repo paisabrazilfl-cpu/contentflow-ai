@@ -31,7 +31,31 @@ const PLATFORM_SCHEMA = z.enum([
   "reddit",
 ]);
 
+// Returns which platforms have their OAuth env vars set on the server.
+// This is safe to expose to the frontend — it only reveals presence, not values.
+function getConfiguredPlatforms(): string[] {
+  const configured: string[] = [];
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    configured.push("google_youtube", "google_business");
+  }
+  if (process.env.META_APP_ID && process.env.META_APP_SECRET) {
+    configured.push("meta_facebook", "meta_instagram");
+  }
+  if (process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET) {
+    configured.push("tiktok");
+  }
+  if (process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET) {
+    configured.push("reddit");
+  }
+  return configured;
+}
+
 export const oauthRouter = router({
+  // Which platforms have server-side OAuth credentials configured
+  getConfiguredPlatforms: protectedProcedure.query(() => {
+    return getConfiguredPlatforms();
+  }),
+
   // List all connected accounts for the current user
   list: protectedProcedure.query(async ({ ctx }) => {
     const accounts = await getConnectedAccountsByUserId(ctx.user.id);
