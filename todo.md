@@ -80,3 +80,16 @@
 - [x] System health monitoring
 - [x] Content moderation
 - [x] User management
+
+## MVP Wiring — Remove All Mock Data
+
+- [x] Dashboard: real stats from DB, real activity feed, real chart data
+- [x] ContentHub: render queueData from tRPC instead of hardcoded array
+- [x] Platforms: render real connected_accounts, working disconnect
+- [x] Analytics: add tRPC calls, real charts from analytics_logs
+- [x] AISettings: persist to DB via business.update mutation
+- [x] Settings: persist API keys, load on mount, real team/webhook CRUD
+- [x] AdminPanel: render real users/businesses, real revenue from DB
+- [x] Billing: wire Stripe Checkout, real subscription status
+- [x] Publishing Worker: real HTTP calls to platform APIs
+- [x] Final: tests pass, build passes, redeploy

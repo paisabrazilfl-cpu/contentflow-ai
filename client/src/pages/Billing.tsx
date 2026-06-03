@@ -4,176 +4,164 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  CreditCard, CheckCircle, ArrowUpRight, Download, ExternalLink, Zap, Crown
+  CreditCard, CheckCircle, Zap, Crown, Rocket, Inbox
 } from "lucide-react";
-import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const plans = [
   {
     id: "starter",
     name: "Starter",
     price: "$97",
-    period: "/mo",
-    features: ["3 connected platforms", "30 posts/month", "Basic analytics", "Email support", "1 team member"],
+    period: "/month",
+    features: ["3 platforms", "50 posts/month", "Basic analytics", "Email support"],
+    icon: Zap,
   },
   {
     id: "pro",
     name: "Pro",
     price: "$197",
-    period: "/mo",
-    features: ["All 6 platforms", "Unlimited posts", "Advanced analytics", "Priority support", "5 team members", "AI citation tracking", "Video generation"],
-    current: true,
+    period: "/month",
+    features: ["6 platforms", "Unlimited posts", "Advanced analytics", "Priority support", "Team members"],
+    icon: Crown,
+    popular: true,
   },
   {
     id: "enterprise",
     name: "Enterprise",
     price: "$497",
-    period: "/mo",
-    features: ["Unlimited everything", "White-label options", "API access", "Dedicated support", "Unlimited team members", "Custom integrations"],
+    period: "/month",
+    features: ["Unlimited platforms", "Unlimited posts", "Custom AI training", "Dedicated support", "API access", "White-label"],
+    icon: Rocket,
   },
 ];
 
-const invoices = [
-  { id: "INV-2026-006", date: "Jun 1, 2026", amount: "$197.00", status: "paid" },
-  { id: "INV-2026-005", date: "May 1, 2026", amount: "$197.00", status: "paid" },
-  { id: "INV-2026-004", date: "Apr 1, 2026", amount: "$197.00", status: "paid" },
-  { id: "INV-2026-003", date: "Mar 1, 2026", amount: "$97.00", status: "paid" },
-  { id: "INV-2026-002", date: "Feb 1, 2026", amount: "$97.00", status: "paid" },
-  { id: "INV-2026-001", date: "Jan 1, 2026", amount: "$97.00", status: "paid" },
-];
-
-const usage = [
-  { label: "Posts Published", current: 127, limit: "Unlimited", percentage: 0 },
-  { label: "Platforms Connected", current: 5, limit: "6", percentage: 83 },
-  { label: "Team Members", current: 3, limit: "5", percentage: 60 },
-  { label: "AI Credits Used", current: 2400, limit: "5000", percentage: 48 },
-];
-
 export default function Billing() {
+  const { user } = useAuth();
+  const { data: invoices, isLoading: invoicesLoading } = trpc.billing.invoices.useQuery();
+  const { data: business } = trpc.business.get.useQuery();
+  const { data: contentData } = trpc.content.queue.useQuery();
+
+  const currentPlan = user?.planTier || "free";
+  const subscriptionStatus = user?.subscriptionStatus || "none";
+
+  // Real usage stats from content queue
+  const postsThisMonth = contentData?.filter(c => {
+    const created = new Date(c.createdAt);
+    const now = new Date();
+    return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+  }).length || 0;
+
+  const handleUpgrade = (planId: string) => {
+    window.location.href = `/api/stripe/checkout?plan=${planId}`;
+  };
+
+  const handleManageBilling = () => {
+    window.location.href = "/api/stripe/portal";
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Billing & Subscription</h1>
-            <p className="text-muted-foreground text-sm mt-1">Manage your plan, usage, and payment methods</p>
+            <h1 className="text-2xl font-bold">Billing</h1>
+            <p className="text-muted-foreground text-sm mt-1">Manage your subscription and payment methods</p>
           </div>
-          <Button variant="outline" onClick={() => toast.info("Stripe Customer Portal coming soon")}>
-            <ExternalLink className="w-4 h-4 mr-2" /> Manage in Stripe
-          </Button>
+          {currentPlan !== "free" && (
+            <Button variant="outline" onClick={handleManageBilling}>
+              <CreditCard className="w-4 h-4 mr-2" /> Manage Payment
+            </Button>
+          )}
         </div>
 
         {/* Current Plan */}
-        <Card className="bg-card border-primary/30 ring-1 ring-primary/20">
-          <CardContent className="p-6">
+        <Card className="bg-card border-border">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl gradient-orange flex items-center justify-center">
+                <div className="w-12 h-12 rounded-lg gradient-orange flex items-center justify-center">
                   <Crown className="w-6 h-6 text-black" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xl font-bold">Pro Plan</h3>
-                    <Badge className="gradient-orange text-black">Active</Badge>
+                  <p className="font-semibold text-lg capitalize">{currentPlan} Plan</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="outline" className={
+                      subscriptionStatus === "active" ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                      subscriptionStatus === "trialing" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                      "bg-muted text-muted-foreground"
+                    }>
+                      {subscriptionStatus}
+                    </Badge>
+                    {business && <span className="text-xs text-muted-foreground">{business.name}</span>}
                   </div>
-                  <p className="text-muted-foreground text-sm mt-0.5">$197/month • Renews Jun 1, 2026</p>
                 </div>
-              </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold">$197</p>
-                <p className="text-sm text-muted-foreground">/month</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Usage Stats */}
+        {/* Usage */}
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-base">Usage This Period</CardTitle>
+            <CardTitle className="text-base">Usage This Month</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {usage.map((item) => (
-              <div key={item.label} className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>{item.label}</span>
-                  <span className="text-muted-foreground">{item.current.toLocaleString()} / {item.limit}</span>
-                </div>
-                {item.percentage > 0 && (
-                  <Progress value={item.percentage} className="h-2" />
-                )}
-                {item.percentage === 0 && (
-                  <div className="flex items-center gap-1 text-xs text-green-400">
-                    <CheckCircle className="w-3 h-3" /> Unlimited on your plan
-                  </div>
-                )}
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span>Posts Created</span>
+                <span className="font-medium">{postsThisMonth}</span>
               </div>
-            ))}
+              <Progress value={Math.min(postsThisMonth * 2, 100)} className="h-2" />
+            </div>
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span>AI Generations</span>
+                <span className="font-medium">{contentData?.filter(c => c.content).length || 0}</span>
+              </div>
+              <Progress value={Math.min((contentData?.filter(c => c.content).length || 0) * 2, 100)} className="h-2" />
+            </div>
           </CardContent>
         </Card>
 
-        {/* Plan Comparison */}
-        <div>
-          <h3 className="text-lg font-semibold mb-4">Available Plans</h3>
-          <div className="grid md:grid-cols-3 gap-4">
-            {plans.map((plan) => (
-              <Card key={plan.id} className={`bg-card border-border ${plan.current ? "border-primary ring-1 ring-primary/30" : ""}`}>
+        {/* Plans */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {plans.map((plan) => {
+            const Icon = plan.icon;
+            const isCurrent = currentPlan === plan.id;
+            return (
+              <Card key={plan.id} className={`bg-card border-border ${plan.popular ? "ring-1 ring-primary" : ""} ${isCurrent ? "border-green-500/30" : ""}`}>
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">{plan.name}</h4>
-                    {plan.current && <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Current</Badge>}
+                  <div className="flex items-center gap-2 mb-3">
+                    <Icon className="w-5 h-5 text-primary" />
+                    <h3 className="font-semibold">{plan.name}</h3>
+                    {plan.popular && <Badge className="gradient-orange text-black text-[10px]">Popular</Badge>}
+                    {isCurrent && <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20 text-[10px]">Current</Badge>}
                   </div>
-                  <div className="mb-4">
-                    <span className="text-2xl font-bold">{plan.price}</span>
-                    <span className="text-muted-foreground text-sm">{plan.period}</span>
-                  </div>
-                  <ul className="space-y-2 mb-4">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-center gap-2 text-xs">
-                        <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />
-                        <span>{f}</span>
+                  <p className="text-3xl font-bold">{plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.period}</span></p>
+                  <ul className="mt-4 space-y-2">
+                    {plan.features.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2 text-sm">
+                        <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
+                        {f}
                       </li>
                     ))}
                   </ul>
-                  {plan.current ? (
-                    <Button variant="outline" className="w-full" disabled>Current Plan</Button>
-                  ) : (
-                    <Button
-                      variant={plan.id === "enterprise" ? "default" : "outline"}
-                      className={`w-full ${plan.id === "enterprise" ? "gradient-orange text-black font-semibold hover:opacity-90" : ""}`}
-                      onClick={() => toast.info("Plan change coming soon - Stripe Checkout")}
-                    >
-                      {plan.id === "starter" ? "Downgrade" : "Upgrade"}
-                    </Button>
-                  )}
+                  <Button
+                    className={`w-full mt-4 ${isCurrent ? "" : "gradient-orange text-black font-semibold hover:opacity-90"}`}
+                    variant={isCurrent ? "outline" : "default"}
+                    disabled={isCurrent}
+                    onClick={() => handleUpgrade(plan.id)}
+                  >
+                    {isCurrent ? "Current Plan" : "Upgrade"}
+                  </Button>
                 </CardContent>
               </Card>
-            ))}
-          </div>
+            );
+          })}
         </div>
-
-        {/* Payment Method */}
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-base">Payment Method</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-4 rounded-lg bg-secondary">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm">Visa ending in 4242</p>
-                  <p className="text-xs text-muted-foreground">Expires 12/2027</p>
-                </div>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => toast.info("Stripe payment method update coming soon")}>
-                Update
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Invoice History */}
         <Card className="bg-card border-border">
@@ -181,23 +169,47 @@ export default function Billing() {
             <CardTitle className="text-base">Invoice History</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {invoices.map((inv) => (
-                <div key={inv.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-secondary transition-colors">
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm font-mono text-muted-foreground">{inv.id}</span>
-                    <span className="text-sm">{inv.date}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm font-medium">{inv.amount}</span>
-                    <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">{inv.status}</Badge>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                      <Download className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {invoicesLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+              </div>
+            ) : invoices && invoices.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground">
+                      <th className="text-left py-3 px-2">Date</th>
+                      <th className="text-left py-3 px-2">Amount</th>
+                      <th className="text-left py-3 px-2">Status</th>
+                      <th className="text-left py-3 px-2">Invoice ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.map((inv) => (
+                      <tr key={inv.id} className="border-b border-border last:border-0">
+                        <td className="py-3 px-2">{new Date(inv.createdAt).toLocaleDateString()}</td>
+                        <td className="py-3 px-2 font-medium">${((inv.amount || 0) / 100).toFixed(2)}</td>
+                        <td className="py-3 px-2">
+                          <Badge variant="outline" className={
+                            inv.status === "paid" ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                            "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                          }>
+                            {inv.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-2 text-muted-foreground">{inv.stripeInvoiceId || `INV-${inv.id}`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <Inbox className="w-8 h-8 mb-2 opacity-30" />
+                <p className="text-sm">No invoices yet</p>
+                <p className="text-xs mt-1">Invoices will appear here after your first payment</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
