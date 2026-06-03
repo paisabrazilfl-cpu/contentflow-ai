@@ -313,9 +313,9 @@ export default function Home() {
               <span className="font-semibold">ContentFlow</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-              <a href="#" className="hover:text-foreground transition-colors">Terms</a>
-              <a href="#" className="hover:text-foreground transition-colors">Support</a>
+              <a href="/privacy" className="hover:text-foreground transition-colors">Privacy</a>
+              <a href="/terms" className="hover:text-foreground transition-colors">Terms</a>
+              <a href="mailto:support@contentflow.ai" className="hover:text-foreground transition-colors">Support</a>
             </div>
             <p className="text-sm text-muted-foreground">© 2026 ContentFlow. All rights reserved.</p>
           </div>

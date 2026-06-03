@@ -7,6 +7,10 @@ import { z } from "zod";
 import * as db from "./db";
 import { generateContent } from "./ai-content";
 import { runPublishingWorker } from "./publishing-worker";
+import { analyzeBusinessWebsite } from "./business-analyzer";
+import { scoreContent, getRecentTitles } from "./content-quality";
+import { checkAIVisibility } from "./ai-visibility";
+import { sendWelcomeEmail } from "./email-system";
 
 export const appRouter = router({
   system: systemRouter,
@@ -32,8 +36,16 @@ export const appRouter = router({
       websiteUrl: z.string().optional(),
       description: z.string().optional(),
       timezone: z.string().optional(),
+      topicClusters: z.any().optional(),
+      postingSchedule: z.any().optional(),
+      contentTypes: z.any().optional(),
+      autoApprove: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
       await db.createBusiness({ ...input, userId: ctx.user.id, name: input.name });
+      // Send welcome email
+      if (ctx.user.email) {
+        sendWelcomeEmail(ctx.user.email, input.name).catch(() => {});
+      }
       return { success: true };
     }),
     update: protectedProcedure.input(z.object({
@@ -54,6 +66,14 @@ export const appRouter = router({
       if (!business || business.id !== id) throw new TRPCError({ code: 'FORBIDDEN' });
       await db.updateBusiness(id, data);
       return { success: true };
+    }),
+    // Business Analyzer — uses LLM to analyze website and generate content strategy
+    analyze: protectedProcedure.input(z.object({
+      websiteUrl: z.string().min(1),
+      businessName: z.string().min(1),
+    })).mutation(async ({ ctx, input }) => {
+      const analysis = await analyzeBusinessWebsite(input.websiteUrl, input.businessName);
+      return analysis;
     }),
   }),
 
@@ -128,7 +148,7 @@ export const appRouter = router({
       await db.updateContentStatus(input.id, input.status);
       return { success: true };
     }),
-    // AI Content Generation
+    // AI Content Generation with quality scoring
     generate: protectedProcedure.input(z.object({
       platform: z.string(),
       contentType: z.string().default("social"),
@@ -136,39 +156,94 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const business = await db.getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError({ code: 'NOT_FOUND', message: 'Business not found. Complete onboarding first.' });
+
       const generated = await generateContent({
         platform: input.platform,
         contentType: input.contentType,
         topic: input.topic,
         business,
       });
-      // Save to content queue
+
+      // Score the generated content
+      const recentTitles = await getRecentTitles(business.id);
+      const qualityScore = await scoreContent(
+        generated.content,
+        generated.title,
+        input.platform,
+        business.toneOfVoice || "",
+        business.targetAudience || "",
+        recentTitles
+      );
+
+      // Save to content queue with quality score
       await db.createContentItem({
         businessId: business.id,
         platform: input.platform,
         contentType: input.contentType,
         title: generated.title,
         content: generated.content,
-        scheduledFor: new Date(Date.now() + 3600000), // 1 hour from now
+        scheduledFor: new Date(Date.now() + 3600000),
+        engagementData: { qualityScore },
       });
+
       // Log activity
       await db.logActivity({
         businessId: business.id,
-        action: `AI generated ${input.contentType} for ${input.platform}`,
+        action: `AI generated ${input.contentType} for ${input.platform} (score: ${qualityScore.overall}/10)`,
         platform: input.platform,
         description: generated.title,
       });
-      return generated;
+
+      return { ...generated, qualityScore };
     }),
-    // Publishing worker - processes queued content via the automated publishing engine
+    // Score existing content
+    score: protectedProcedure.input(z.object({
+      content: z.string(),
+      title: z.string(),
+      platform: z.string(),
+    })).mutation(async ({ ctx, input }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) throw new TRPCError({ code: 'NOT_FOUND' });
+      const recentTitles = await getRecentTitles(business.id);
+      return scoreContent(input.content, input.title, input.platform, business.toneOfVoice || "", business.targetAudience || "", recentTitles);
+    }),
+    // Publishing worker
     processQueue: protectedProcedure.mutation(async ({ ctx }) => {
       const business = await db.getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError({ code: 'NOT_FOUND' });
       return runPublishingWorker(business.id);
     }),
-    // Admin: run worker across all businesses
     runWorkerAll: adminProcedure.mutation(async () => {
       return runPublishingWorker();
+    }),
+  }),
+
+  // AI Visibility Score
+  visibility: router({
+    check: protectedProcedure.mutation(async ({ ctx }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) throw new TRPCError({ code: 'NOT_FOUND' });
+      const keywords = (business.topicClusters as string[]) || [];
+      const result = await checkAIVisibility(
+        business.name,
+        business.industry || "general",
+        keywords,
+        business.websiteUrl || undefined
+      );
+      // Store the score in analytics
+      await db.logAnalytic({
+        businessId: business.id,
+        platform: "ai_visibility",
+        metricType: "visibility_score",
+        metricValue: result.overallScore,
+        metadata: result,
+      });
+      return result;
+    }),
+    latest: protectedProcedure.query(async ({ ctx }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) return null;
+      return db.getLatestVisibilityScore(business.id);
     }),
   }),
 
@@ -178,6 +253,11 @@ export const appRouter = router({
       const business = await db.getBusinessByUserId(ctx.user.id);
       if (!business) return [];
       return db.getAnalytics(business.id);
+    }),
+    roi: protectedProcedure.query(async ({ ctx }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) return { published: 0, pending: 0, failed: 0, citationsDetected: 0, visibilityScore: 0 };
+      return db.getROISummary(business.id);
     }),
   }),
 
@@ -222,6 +302,34 @@ export const appRouter = router({
       if (!business) throw new TRPCError({ code: 'NOT_FOUND' });
       await db.saveApiKey({ ...input, businessId: business.id });
       return { success: true };
+    }),
+  }),
+
+  // GDPR / Data Management
+  gdpr: router({
+    export: protectedProcedure.mutation(async ({ ctx }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      const content = business ? await db.getContentQueue(business.id) : [];
+      const analytics = business ? await db.getAnalytics(business.id) : [];
+      const activity = business ? await db.getActivityFeed(business.id, 100) : [];
+      const platforms = business ? await db.getConnectedAccounts(business.id) : [];
+      return {
+        user: { id: ctx.user.id, email: ctx.user.email, name: ctx.user.name, createdAt: ctx.user.createdAt },
+        business,
+        content,
+        analytics,
+        activity,
+        platforms: platforms.map(p => ({ ...p, accessToken: "[REDACTED]", refreshToken: "[REDACTED]" })),
+        exportedAt: new Date().toISOString(),
+      };
+    }),
+    delete: protectedProcedure.mutation(async ({ ctx }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (business) {
+        await db.deleteAllBusinessData(business.id);
+      }
+      await db.deleteUser(ctx.user.id);
+      return { success: true, message: "All data has been permanently deleted." };
     }),
   }),
 

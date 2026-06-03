@@ -14,6 +14,8 @@ import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
 import AdminPanel from "./pages/AdminPanel";
 import Onboarding from "./pages/Onboarding";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
 
 function Router() {
   return (
@@ -28,6 +30,8 @@ function Router() {
       <Route path="/settings" component={Settings} />
       <Route path="/admin" component={AdminPanel} />
       <Route path="/onboarding" component={Onboarding} />
+      <Route path="/terms" component={Terms} />
+      <Route path="/privacy" component={Privacy} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

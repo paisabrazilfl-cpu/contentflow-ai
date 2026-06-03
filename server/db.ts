@@ -207,3 +207,62 @@ export async function getAllBusinesses() {
   if (!db) return [];
   return db.select().from(businesses).orderBy(desc(businesses.createdAt));
 }
+
+// AI Visibility Score
+export async function getLatestVisibilityScore(businessId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const results = await db.select().from(analyticsLogs)
+    .where(and(eq(analyticsLogs.businessId, businessId), eq(analyticsLogs.metricType, "visibility_score")))
+    .orderBy(desc(analyticsLogs.recordedAt))
+    .limit(1);
+  if (results.length === 0) return null;
+  return results[0];
+}
+
+// ROI Summary
+export async function getROISummary(businessId: number) {
+  const db = await getDb();
+  if (!db) return { published: 0, pending: 0, failed: 0, citationsDetected: 0, visibilityScore: 0 };
+
+  const allContent = await db.select().from(contentQueue).where(eq(contentQueue.businessId, businessId));
+  const published = allContent.filter(c => c.status === "published").length;
+  const pending = allContent.filter(c => c.status === "pending").length;
+  const failed = allContent.filter(c => c.status === "failed").length;
+
+  // Get latest visibility score
+  const visResult = await db.select().from(analyticsLogs)
+    .where(and(eq(analyticsLogs.businessId, businessId), eq(analyticsLogs.metricType, "visibility_score")))
+    .orderBy(desc(analyticsLogs.recordedAt))
+    .limit(1);
+  const visibilityScore = visResult[0]?.metricValue || 0;
+
+  // Count citation-type analytics
+  const citations = await db.select().from(analyticsLogs)
+    .where(and(eq(analyticsLogs.businessId, businessId), eq(analyticsLogs.metricType, "citation_detected")));
+  const citationsDetected = citations.length;
+
+  return { published, pending, failed, citationsDetected, visibilityScore };
+}
+
+// GDPR: Delete all business data
+export async function deleteAllBusinessData(businessId: number) {
+  const db = await getDb();
+  if (!db) return;
+  // Delete in order to respect foreign key-like constraints
+  await db.delete(activityFeed).where(eq(activityFeed.businessId, businessId));
+  await db.delete(analyticsLogs).where(eq(analyticsLogs.businessId, businessId));
+  await db.delete(contentQueue).where(eq(contentQueue.businessId, businessId));
+  await db.delete(connectedAccounts).where(eq(connectedAccounts.businessId, businessId));
+  await db.delete(apiKeys).where(eq(apiKeys.businessId, businessId));
+  await db.delete(teamMembers).where(eq(teamMembers.businessId, businessId));
+  await db.delete(businesses).where(eq(businesses.id, businessId));
+}
+
+// GDPR: Delete user
+export async function deleteUser(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(invoices).where(eq(invoices.userId, userId));
+  await db.delete(users).where(eq(users.id, userId));
+}

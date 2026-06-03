@@ -93,3 +93,16 @@
 - [x] Billing: wire Stripe Checkout, real subscription status
 - [x] Publishing Worker: real HTTP calls to platform APIs
 - [x] Final: tests pass, build passes, redeploy
+
+## Market-Ready Features (Round 3)
+
+- [x] 1. Onboarding Intelligence: business analyzer via LLM, auto-generate content strategy
+- [x] 2. Content Quality Control: scoring, brand voice check, duplicate detection
+- [x] 3. Scheduling Engine: /api/cron/publish endpoint, auto-generate + publish
+- [x] 4. ROI Analytics: AI visibility score, citation detection, ROI summary card
+- [x] 5. Multi-Tenant Isolation: middleware audit, business_id scoping
+- [x] 6. Email System: welcome, weekly report, publish notification, citation alert
+- [x] 7. White-Label Publishing: per-business OAuth scoping, publishing destinations UI
+- [x] 8. Error Handling & Retry: exponential backoff, error display, retry button
+- [x] 9. AI Visibility Score: search AI engines, score 0-100, dashboard metric
+- [x] 10. Legal Pages: ToS, Privacy Policy, GDPR export/delete

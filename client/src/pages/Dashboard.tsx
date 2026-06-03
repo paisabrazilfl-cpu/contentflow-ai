@@ -10,6 +10,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2, Brain } from "lucide-react";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
@@ -18,6 +20,12 @@ export default function Dashboard() {
   const { data: contentData } = trpc.content.queue.useQuery();
   const { data: platformsData } = trpc.platforms.list.useQuery();
   const { data: analyticsData } = trpc.analytics.get.useQuery();
+  const { data: roiData } = trpc.analytics.roi.useQuery();
+  const { data: visibilityData } = trpc.visibility.latest.useQuery();
+  const visibilityMutation = trpc.visibility.check.useMutation({
+    onSuccess: () => toast.success("AI Visibility Score updated!"),
+    onError: (err) => toast.error(err.message),
+  });
 
   // Compute real stats
   const publishedCount = contentData?.filter(c => c.status === "published").length || 0;
@@ -68,6 +76,54 @@ export default function Dashboard() {
             </Button>
           </div>
         </div>
+
+        {/* AI Visibility Score Card */}
+        <Card className="bg-card border-border border-primary/30">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl gradient-orange flex items-center justify-center">
+                  <Brain className="w-7 h-7 text-black" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">AI Visibility Score</p>
+                  <p className="text-4xl font-bold mt-0.5">
+                    {visibilityData?.metricValue ?? "--"}
+                    <span className="text-lg text-muted-foreground font-normal">/100</span>
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <Button size="sm" variant="outline" onClick={() => visibilityMutation.mutate()} disabled={visibilityMutation.isPending}>
+                  {visibilityMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Refresh"}
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {visibilityData ? `Last: ${new Date(visibilityData.recordedAt).toLocaleDateString()}` : "Not checked yet"}
+                </p>
+              </div>
+            </div>
+            {roiData && (
+              <div className="grid grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-green-400">{roiData.published}</p>
+                  <p className="text-[10px] text-muted-foreground">Published</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-yellow-400">{roiData.pending}</p>
+                  <p className="text-[10px] text-muted-foreground">Pending</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-blue-400">{roiData.citationsDetected}</p>
+                  <p className="text-[10px] text-muted-foreground">Citations</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-primary">{roiData.visibilityScore}</p>
+                  <p className="text-[10px] text-muted-foreground">Visibility</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -34,6 +34,15 @@ export default function Settings() {
   const { data: teamMembers, isLoading: teamLoading } = trpc.team.list.useQuery();
   const utils = trpc.useUtils();
 
+  const exportMutation = trpc.gdpr.export.useMutation();
+  const deleteMutation = trpc.gdpr.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Account deleted. Redirecting...");
+      setTimeout(() => window.location.href = "/", 2000);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const saveKeyMutation = trpc.apiKeys.save.useMutation({
     onSuccess: () => {
       toast.success("API key saved");
@@ -237,19 +246,41 @@ export default function Settings() {
             <Card className="bg-card border-border">
               <CardContent className="p-5 space-y-4">
                 <div>
-                  <h4 className="font-semibold text-sm">Export Content Data</h4>
-                  <p className="text-xs text-muted-foreground mt-1">Download your content queue and analytics as JSON</p>
-                  <Button variant="outline" size="sm" className="mt-3" onClick={() => {
-                    const data = { contentQueue: [], analytics: [] };
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = "contentflow-export.json";
-                    a.click();
-                    toast.success("Export downloaded");
-                  }}>
-                    <Download className="w-4 h-4 mr-2" /> Export JSON
+                  <h4 className="font-semibold text-sm">GDPR Data Export</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Download all your data (business info, content, analytics, connections) as JSON. OAuth tokens are redacted for security.</p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={async () => {
+                    try {
+                      const result = await exportMutation.mutateAsync();
+                      const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `contentflow-export-${new Date().toISOString().slice(0,10)}.json`;
+                      a.click();
+                      toast.success("Data exported successfully");
+                    } catch (err: any) {
+                      toast.error(err.message);
+                    }
+                  }} disabled={exportMutation.isPending}>
+                    {exportMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                    Export All My Data
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card border-border border-red-500/30">
+              <CardContent className="p-5 space-y-4">
+                <div>
+                  <h4 className="font-semibold text-sm text-red-400">Delete My Account</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Permanently delete your account and all associated data. This action cannot be undone. All content, analytics, connections, and business data will be permanently removed.</p>
+                  <Button variant="outline" size="sm" className="mt-3 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => {
+                    if (window.confirm("Are you sure you want to permanently delete your account and all data? This cannot be undone.")) {
+                      deleteMutation.mutate();
+                    }
+                  }} disabled={deleteMutation.isPending}>
+                    {deleteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                    Delete My Account
                   </Button>
                 </div>
               </CardContent>
