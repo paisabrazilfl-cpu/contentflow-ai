@@ -106,3 +106,16 @@
 - [x] 8. Error Handling & Retry: exponential backoff, error display, retry button
 - [x] 9. AI Visibility Score: search AI engines, score 0-100, dashboard metric
 - [x] 10. Legal Pages: ToS, Privacy Policy, GDPR export/delete
+
+## Stripe Billing & Plan Enforcement (Round 4)
+
+- [x] Stripe checkout endpoint with real session creation
+- [x] Stripe webhook handler (checkout.completed, subscription.updated/deleted, invoice.failed)
+- [x] Stripe customer portal redirect
+- [x] Usage tracking table (month, posts_published, platforms_connected)
+- [x] Plan limits function (Starter/Pro/Enterprise)
+- [x] Plan enforcement middleware on all actions
+- [x] Frontend feature gating (lock icons, upgrade prompts)
+- [x] Billing page with real subscription data
+- [x] Usage display on dashboard
+- [x] Tests pass, build passes, redeploy

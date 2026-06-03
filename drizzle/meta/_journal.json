@@ -15,6 +15,13 @@
       "when": 1780386918824,
       "tag": "0001_bouncy_leech",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1780460820940,
+      "tag": "0002_strange_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import { analyzeBusinessWebsite } from "./business-analyzer";
 import { scoreContent, getRecentTitles } from "./content-quality";
 import { checkAIVisibility } from "./ai-visibility";
 import { sendWelcomeEmail } from "./email-system";
+import { canConnectPlatform, canPublishContent, canUseContentType, canUseFeature, getOrCreateUsage, incrementUsage, getPlanLimits } from "./plan-limits";
 
 export const appRouter = router({
   system: systemRouter,
@@ -93,6 +94,9 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const business = await db.getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError({ code: 'NOT_FOUND', message: 'Business not found' });
+      // Plan enforcement: check platform limit
+      const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
+      if (!platformCheck.allowed) throw new TRPCError({ code: 'FORBIDDEN', message: platformCheck.message });
       await db.addConnectedAccount({
         businessId: business.id,
         platform: input.platform,
@@ -131,6 +135,12 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const business = await db.getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError({ code: 'NOT_FOUND' });
+      // Plan enforcement: check post limit
+      const postCheck = await canPublishContent(business.id, ctx.user.planTier);
+      if (!postCheck.allowed) throw new TRPCError({ code: 'FORBIDDEN', message: postCheck.message });
+      // Plan enforcement: check content type
+      const typeCheck = canUseContentType(input.contentType || 'social', ctx.user.planTier);
+      if (!typeCheck.allowed) throw new TRPCError({ code: 'FORBIDDEN', message: typeCheck.message });
       await db.createContentItem({
         businessId: business.id,
         platform: input.platform,
@@ -139,6 +149,7 @@ export const appRouter = router({
         content: input.content,
         scheduledFor: input.scheduledFor ? new Date(input.scheduledFor) : new Date(),
       });
+      await incrementUsage(business.id, 'postsGenerated');
       return { success: true };
     }),
     updateStatus: protectedProcedure.input(z.object({
@@ -156,6 +167,11 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const business = await db.getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError({ code: 'NOT_FOUND', message: 'Business not found. Complete onboarding first.' });
+      // Plan enforcement: check content type and post limit
+      const typeCheck = canUseContentType(input.contentType, ctx.user.planTier);
+      if (!typeCheck.allowed) throw new TRPCError({ code: 'FORBIDDEN', message: typeCheck.message });
+      const postCheck = await canPublishContent(business.id, ctx.user.planTier);
+      if (!postCheck.allowed) throw new TRPCError({ code: 'FORBIDDEN', message: postCheck.message });
 
       const generated = await generateContent({
         platform: input.platform,
@@ -194,6 +210,8 @@ export const appRouter = router({
         description: generated.title,
       });
 
+      await incrementUsage(business.id, 'aiGenerations');
+      await incrementUsage(business.id, 'postsGenerated');
       return { ...generated, qualityScore };
     }),
     // Score existing content
@@ -267,6 +285,19 @@ export const appRouter = router({
       const business = await db.getBusinessByUserId(ctx.user.id);
       if (!business) return [];
       return db.getActivityFeed(business.id);
+    }),
+  }),
+
+  // Usage tracking
+  usage: router({
+    get: protectedProcedure.query(async ({ ctx }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
+      return getOrCreateUsage(business.id);
+    }),
+    plan: protectedProcedure.query(({ ctx }) => {
+      const limits = getPlanLimits(ctx.user.planTier);
+      return { tier: ctx.user.planTier || 'free', limits };
     }),
   }),
 

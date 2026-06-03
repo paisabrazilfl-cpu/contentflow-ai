@@ -21,6 +21,8 @@ export default function Dashboard() {
   const { data: platformsData } = trpc.platforms.list.useQuery();
   const { data: analyticsData } = trpc.analytics.get.useQuery();
   const { data: roiData } = trpc.analytics.roi.useQuery();
+  const { data: usageData } = trpc.usage.get.useQuery();
+  const { data: planData } = trpc.usage.plan.useQuery();
   const { data: visibilityData } = trpc.visibility.latest.useQuery();
   const visibilityMutation = trpc.visibility.check.useMutation({
     onSuccess: () => toast.success("AI Visibility Score updated!"),
@@ -32,6 +34,9 @@ export default function Dashboard() {
   const pendingCount = contentData?.filter(c => c.status === "pending").length || 0;
   const activePlatforms = platformsData?.filter(p => p.status === "active").length || 0;
   const totalPlatforms = platformsData?.length || 0;
+  const postsUsed = usageData?.postsPublished || 0;
+  const postsLimit = planData?.limits?.maxPostsPerMonth || 0;
+  const isUnlimited = postsLimit === -1;
 
   // Build chart data from analytics
   const chartData = (() => {
@@ -131,11 +136,11 @@ export default function Dashboard() {
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Posts Published</p>
+                  <p className="text-sm text-muted-foreground">Posts This Month</p>
                   {bizLoading ? <Skeleton className="h-8 w-16 mt-1" /> : (
-                    <p className="text-3xl font-bold mt-1">{publishedCount}</p>
+                    <p className="text-3xl font-bold mt-1">{postsUsed}{!isUnlimited && <span className="text-lg text-muted-foreground font-normal">/{postsLimit}</span>}</p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-1">{pendingCount} pending in queue</p>
+                  <p className="text-xs text-muted-foreground mt-1">{isUnlimited ? "Unlimited" : `${Math.max(0, postsLimit - postsUsed)} remaining`}</p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
                   <FileText className="w-6 h-6 text-primary" />

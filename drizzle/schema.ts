@@ -172,3 +172,21 @@ export const activityFeed = mysqlTable("activity_feed", {
 
 export type ActivityItem = typeof activityFeed.$inferSelect;
 export type InsertActivityItem = typeof activityFeed.$inferInsert;
+
+/**
+ * Usage tracking per business per month
+ */
+export const usageTracking = mysqlTable("usage_tracking", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  month: varchar("month", { length: 7 }).notNull(), // YYYY-MM format
+  postsPublished: int("postsPublished").default(0).notNull(),
+  postsGenerated: int("postsGenerated").default(0).notNull(),
+  platformsConnected: int("platformsConnected").default(0).notNull(),
+  aiGenerations: int("aiGenerations").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type UsageRecord = typeof usageTracking.$inferSelect;
+export type InsertUsageRecord = typeof usageTracking.$inferInsert;
