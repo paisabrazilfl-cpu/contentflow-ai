@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useEffect } from "react";
+import { useLocation } from "wouter";
 
 const connectedPlatforms = [
   {
@@ -82,9 +84,27 @@ const platformIcons: Record<string, string> = {
 };
 
 export default function Platforms() {
+  const [location] = useLocation();
   const { data: platformsData } = trpc.platforms.list.useQuery();
   const connectMutation = trpc.platforms.connect.useMutation();
   const disconnectMutation = trpc.platforms.disconnect.useMutation();
+
+  // Handle OAuth callback messages
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    const email = params.get("email");
+    const error = params.get("error");
+
+    if (connected) {
+      toast.success(`Successfully connected ${connected} account (${email})`);
+      // Clear the query params
+      window.history.replaceState({}, document.title, "/platforms");
+    } else if (error) {
+      toast.error(`Failed to connect: ${error}`);
+      window.history.replaceState({}, document.title, "/platforms");
+    }
+  }, []);
 
   return (
     <AppLayout>
@@ -171,21 +191,33 @@ export default function Platforms() {
                     {platform.status === "connected" && (
                       <>
                         <Switch checked={platform.enabled} onCheckedChange={() => toast.info("Toggle coming soon")} />
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => toast.info("Sync coming soon")}>
                           <RefreshCw className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => toast.info("Settings coming soon")}>
                           <Settings className="w-4 h-4" />
                         </Button>
                       </>
                     )}
                     {platform.status === "expired" && (
-                      <Button size="sm" variant="outline" className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10" onClick={() => toast.info("Reconnect flow coming soon")}>
+                      <Button size="sm" variant="outline" className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10" onClick={() => {
+                        if (platform.id === "youtube") {
+                          window.location.href = "/api/oauth/google/init";
+                        } else {
+                          toast.info("Reconnect flow coming soon");
+                        }
+                      }}>
                         <RefreshCw className="w-4 h-4 mr-2" /> Reconnect
                       </Button>
                     )}
                     {platform.status === "disconnected" && (
-                      <Button size="sm" className="gradient-orange text-black font-semibold hover:opacity-90" onClick={() => toast.info("OAuth connection flow coming soon")}>
+                      <Button size="sm" className="gradient-orange text-black font-semibold hover:opacity-90" onClick={() => {
+                        if (platform.id === "google") {
+                          window.location.href = "/api/oauth/google/init";
+                        } else {
+                          toast.info(`OAuth connection for ${platform.name} coming soon`);
+                        }
+                      }}>
                         <Plus className="w-4 h-4 mr-2" /> Connect
                       </Button>
                     )}
