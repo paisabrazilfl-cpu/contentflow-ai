@@ -136,7 +136,7 @@ export default function Settings() {
                   </div>
                 ) : apiKeys && apiKeys.length > 0 ? (
                   <div className="space-y-3">
-                    {apiKeys.map((key) => (
+                    {apiKeys.map((key: any) => (
                       <div key={key.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">

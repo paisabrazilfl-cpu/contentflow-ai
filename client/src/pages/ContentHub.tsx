@@ -241,7 +241,7 @@ export default function ContentHub() {
                 </CardContent>
               </Card>
             ) : (
-              pendingItems.map((item) => (
+              pendingItems.map((item: any) => (
                 <Card key={item.id} className="bg-card border-border">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -288,7 +288,7 @@ export default function ContentHub() {
                 </CardContent>
               </Card>
             ) : (
-              publishedItems.map((item) => (
+              publishedItems.map((item: any) => (
                 <Card key={item.id} className="bg-card border-border">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -326,7 +326,7 @@ export default function ContentHub() {
                 </CardContent>
               </Card>
             ) : (
-              failedItems.map((item) => (
+              failedItems.map((item: any) => (
                 <Card key={item.id} className="bg-card border-border border-red-500/20">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">

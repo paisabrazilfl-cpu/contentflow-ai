@@ -130,7 +130,7 @@ export default function Platforms() {
             {connectedAccounts && connectedAccounts.length > 0 && (
               <>
                 <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Connected</h3>
-                {connectedAccounts.map((account) => (
+                {connectedAccounts.map((account: any) => (
                   <Card key={account.id} className={`bg-card border-border ${account.status !== "active" ? "border-yellow-500/30" : ""}`}>
                     <CardContent className="p-5">
                       <div className="flex items-start justify-between">

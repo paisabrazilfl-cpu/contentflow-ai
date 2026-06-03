@@ -249,7 +249,7 @@ export default function Dashboard() {
                     </div>
                   ))
                 ) : activityData && activityData.length > 0 ? (
-                  activityData.slice(0, 6).map((item) => (
+                  activityData.slice(0, 6).map((item: any) => (
                     <div key={item.id} className="flex items-start gap-3 py-2 border-b border-border last:border-0">
                       <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                         <Zap className="w-4 h-4 text-primary" />

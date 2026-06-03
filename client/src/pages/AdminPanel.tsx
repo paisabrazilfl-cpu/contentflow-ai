@@ -140,7 +140,7 @@ export default function AdminPanel() {
                         </tr>
                       </thead>
                       <tbody>
-                        {adminUsers.map((u) => (
+                        {adminUsers.map((u: any) => (
                           <tr key={u.id} className="border-b border-border last:border-0 hover:bg-secondary/50">
                             <td className="py-3 px-2">{u.id}</td>
                             <td className="py-3 px-2 font-medium">{u.name || "—"}</td>
@@ -193,7 +193,7 @@ export default function AdminPanel() {
                         </tr>
                       </thead>
                       <tbody>
-                        {adminBusinesses.map((b) => (
+                        {adminBusinesses.map((b: any) => (
                           <tr key={b.id} className="border-b border-border last:border-0 hover:bg-secondary/50">
                             <td className="py-3 px-2">{b.id}</td>
                             <td className="py-3 px-2 font-medium">{b.name}</td>

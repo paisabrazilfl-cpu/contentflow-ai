@@ -241,7 +241,7 @@ export default function Billing() {
                     </tr>
                   </thead>
                   <tbody>
-                    {invoices.map((inv) => (
+                    {invoices.map((inv: any) => (
                       <tr key={inv.id} className="border-b border-border last:border-0">
                         <td className="py-3 px-2">{new Date(inv.createdAt).toLocaleDateString()}</td>
                         <td className="py-3 px-2">{inv.description || "Subscription payment"}</td>
