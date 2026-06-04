@@ -1,275 +1,249 @@
-import AppLayout from "@/components/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import {
-  CreditCard, CheckCircle, Zap, Crown, Rocket, Inbox, Lock, AlertTriangle
-} from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useEffect } from "react";
 import { toast } from "sonner";
+import { CheckCircle2, CreditCard, ExternalLink, Loader2, XCircle, Zap } from "lucide-react";
+import { PLANS } from "../../../shared/plans";
 
-const plans = [
-  {
-    id: "starter",
-    name: "Starter",
-    price: "$97",
-    period: "/month",
-    features: ["3 platforms", "30 posts/month", "1 team member", "Blog + Social content", "Basic analytics", "Email support"],
-    lockedFeatures: ["AI citation tracking", "Video generation", "White-label", "API access"],
-    icon: Zap,
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: "$197",
-    period: "/month",
-    features: ["6 platforms", "Unlimited posts", "5 team members", "All content types", "Advanced analytics", "AI citation tracking", "Video generation", "Priority support"],
-    lockedFeatures: ["White-label", "API access", "Custom integrations"],
-    icon: Crown,
-    popular: true,
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    price: "$497",
-    period: "/month",
-    features: ["Unlimited platforms", "Unlimited posts", "Unlimited team members", "All content types", "Custom analytics", "White-label options", "API access", "Custom integrations", "Dedicated support"],
-    lockedFeatures: [],
-    icon: Rocket,
-  },
+const PLAN_FEATURES: Record<string, string[]> = {
+  free: [
+    "1 platform connection",
+    "5 AI generations/month",
+    "5 scheduled posts/month",
+    "Solo only (1 user)",
+    "3-day analytics",
+    "No API access",
+  ],
+  starter: [
+    "3 platform connections",
+    "50 AI generations/month",
+    "30 scheduled posts/month",
+    "Solo only (1 user)",
+    "7-day analytics",
+    "Email support",
+    "No API access",
+  ],
+  pro: [
+    "All 6 platform connections",
+    "200 AI generations/month",
+    "150 scheduled posts/month",
+    "Up to 3 team members",
+    "90-day analytics + export",
+    "Priority support",
+    "No API access",
+  ],
+  agency: [
+    "All 6 platform connections",
+    "Unlimited AI generations",
+    "Unlimited scheduled posts",
+    "Unlimited team members",
+    "Full analytics (all time) + export",
+    "Dedicated support",
+    "API access enabled",
+    "White-label (remove branding)",
+  ],
+};
+
+const PAID_PLANS = [
+  { key: "starter" as const, popular: false },
+  { key: "pro" as const, popular: true },
+  { key: "agency" as const, popular: false },
 ];
 
+function UsageBar({ label, used, limit, unlimited }: { label: string; used: number; limit: number | null; unlimited: boolean }) {
+  const pct = unlimited || !limit ? 0 : Math.min(100, (used / limit) * 100);
+  const atLimit = !unlimited && limit !== null && used >= limit;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs mb-1.5">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={atLimit ? "text-destructive font-medium" : "text-foreground font-medium"}>
+          {used} / {unlimited ? "∞" : (limit ?? "—")}
+          {atLimit && " — limit reached"}
+        </span>
+      </div>
+      {!unlimited && (
+        <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${atLimit ? "bg-destructive" : "bg-primary"}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Billing() {
-  const { user } = useAuth();
-  const { data: invoices, isLoading: invoicesLoading } = trpc.billing.invoices.useQuery();
-  const { data: usageData } = trpc.usage.get.useQuery();
-  const { data: planData } = trpc.usage.plan.useQuery();
+  const { data: subscription, isLoading: subLoading } = trpc.billing.getSubscription.useQuery();
+  const { data: tierSummary, isLoading: tierLoading } = trpc.content.getTierSummary.useQuery();
 
-  const currentPlan = planData?.tier || user?.planTier || "free";
-  const limits = planData?.limits;
-  const subscriptionStatus = user?.subscriptionStatus || "trialing";
+  const createCheckout = trpc.billing.createCheckoutSession.useMutation({
+    onSuccess: (data) => { if (data.url) window.location.href = data.url; },
+    onError: (err) => toast.error(err.message),
+  });
 
-  // Handle URL params from Stripe redirect
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("success")) {
-      toast.success("Subscription activated! Welcome to your new plan.");
-      window.history.replaceState({}, document.title, "/billing");
-    } else if (params.get("canceled")) {
-      toast.info("Checkout canceled. No changes made.");
-      window.history.replaceState({}, document.title, "/billing");
-    } else if (params.get("error")) {
-      toast.error(params.get("error"));
-      window.history.replaceState({}, document.title, "/billing");
-    }
-  }, []);
+  const createPortal = trpc.billing.createPortalSession.useMutation({
+    onSuccess: (data) => { window.location.href = data.url; },
+    onError: (err) => toast.error(err.message),
+  });
 
-  const handleUpgrade = (planId: string) => {
-    window.location.href = `/api/stripe/checkout?plan=${planId}`;
+  const handleSubscribe = (plan: "starter" | "pro" | "agency") => {
+    createCheckout.mutate({
+      plan,
+      successUrl: `${window.location.origin}/billing?success=1`,
+      cancelUrl: `${window.location.origin}/billing`,
+    });
   };
 
-  const handleManageBilling = () => {
-    window.location.href = "/api/stripe/portal";
+  const handleManage = () => {
+    createPortal.mutate({ returnUrl: `${window.location.origin}/billing` });
   };
 
-  // Usage calculations
-  const postsUsed = usageData?.postsPublished || 0;
-  const postsLimit = limits?.maxPostsPerMonth || 0;
-  const postsPercentage = postsLimit > 0 ? Math.min((postsUsed / postsLimit) * 100, 100) : 0;
-  const isUnlimitedPosts = postsLimit === -1;
+  const currentPlan = (subscription?.plan ?? "free") as keyof typeof PLANS;
+  const isActive = subscription?.status === "active" || subscription?.status === "trialing" || currentPlan === "free";
+  const isLoading = subLoading || tierLoading;
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Billing & Subscription</h1>
-            <p className="text-muted-foreground text-sm mt-1">Manage your plan, usage, and payment methods</p>
+    <div className="p-6 lg:p-8 max-w-5xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-foreground">Billing & Subscription</h1>
+        <p className="text-muted-foreground mt-1">Manage your plan and track your usage.</p>
+      </div>
+
+      {/* Current plan card */}
+      {!isLoading && (
+        <div className="p-5 rounded-xl border border-border bg-card mb-8">
+          <div className="flex items-center justify-between flex-wrap gap-4 mb-5">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Current Plan</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold text-foreground capitalize">{PLANS[currentPlan].name}</span>
+                {isActive && currentPlan !== "free" && (
+                  <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-xs font-medium">Active</span>
+                )}
+                {subscription?.status === "past_due" && (
+                  <span className="px-2 py-0.5 rounded-full bg-destructive/15 text-destructive text-xs font-medium flex items-center gap-1">
+                    <XCircle className="w-3 h-3" /> Past Due
+                  </span>
+                )}
+                {'cancelAtPeriodEnd' in (subscription ?? {}) && (subscription as {cancelAtPeriodEnd?: boolean})?.cancelAtPeriodEnd && (
+                  <span className="px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 text-xs font-medium">Cancels at period end</span>
+                )}
+              </div>
+            </div>
+            {currentPlan !== "free" && (
+              <button
+                onClick={handleManage}
+                disabled={createPortal.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all disabled:opacity-50"
+              >
+                {createPortal.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                Manage Billing
+              </button>
+            )}
           </div>
-          {currentPlan !== "free" && (
-            <Button variant="outline" onClick={handleManageBilling}>
-              <CreditCard className="w-4 h-4 mr-2" /> Manage in Stripe
-            </Button>
+
+          {/* Live usage bars */}
+          {tierSummary && (
+            <div className="space-y-3">
+              <UsageBar
+                label="AI Generations this month"
+                used={tierSummary.generations.used}
+                limit={tierSummary.generations.limit}
+                unlimited={tierSummary.generations.unlimited}
+              />
+              <UsageBar
+                label="Platform Connections"
+                used={tierSummary.platformConnections.used}
+                limit={tierSummary.platformConnections.limit}
+                unlimited={tierSummary.platformConnections.unlimited}
+              />
+              <UsageBar
+                label="Scheduled Posts this month"
+                used={tierSummary.scheduledPosts.used}
+                limit={tierSummary.scheduledPosts.limit}
+                unlimited={tierSummary.scheduledPosts.unlimited}
+              />
+              <div className="flex items-center gap-4 pt-1 text-xs text-muted-foreground">
+                <span className={tierSummary.apiAccess ? "text-green-400" : ""}>
+                  API Access: {tierSummary.apiAccess ? "✓ Enabled" : "✗ Not available"}
+                </span>
+                <span>
+                  Analytics: {tierSummary.analyticsLookbackDays === null ? "All time" : `Last ${tierSummary.analyticsLookbackDays} days`}
+                </span>
+                {tierSummary.analyticsExport && <span className="text-green-400">Export: ✓</span>}
+              </div>
+            </div>
           )}
         </div>
+      )}
 
-        {/* Current Plan & Status */}
-        <Card className="bg-card border-border border-primary/30">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg gradient-orange flex items-center justify-center">
-                  <Crown className="w-6 h-6 text-black" />
-                </div>
-                <div>
-                  <p className="font-semibold text-lg capitalize">{currentPlan} Plan</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="outline" className={
-                      subscriptionStatus === "active" ? "bg-green-500/10 text-green-400 border-green-500/20" :
-                      subscriptionStatus === "trialing" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                      subscriptionStatus === "past_due" ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                      "bg-muted text-muted-foreground"
-                    }>
-                      {subscriptionStatus === "active" ? "Active" :
-                       subscriptionStatus === "trialing" ? "Free Trial" :
-                       subscriptionStatus === "past_due" ? "Payment Due" :
-                       subscriptionStatus}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-              {subscriptionStatus === "past_due" && (
-                <div className="flex items-center gap-2 text-red-400">
-                  <AlertTriangle className="w-5 h-5" />
-                  <span className="text-sm font-medium">Payment failed — update your card</span>
+      {/* Upgrade plans */}
+      <h2 className="font-semibold text-foreground mb-4">
+        {currentPlan === "free" ? "Choose a Plan" : "Change Plan"}
+      </h2>
+      <div className="grid md:grid-cols-3 gap-5">
+        {PAID_PLANS.map(({ key, popular }) => {
+          const plan = PLANS[key];
+          const isCurrent = currentPlan === key;
+          const features = PLAN_FEATURES[key] ?? [];
+
+          return (
+            <div
+              key={key}
+              className={`relative p-5 rounded-xl border flex flex-col ${
+                popular ? "border-primary bg-card" : "border-border bg-card"
+              }`}
+            >
+              {popular && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+                  Most Popular
                 </div>
               )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Usage This Month */}
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-base">Usage This Month</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span>Posts Created</span>
-                <span className="font-medium">
-                  {postsUsed}{isUnlimitedPosts ? "" : ` / ${postsLimit}`}
-                  {isUnlimitedPosts && <span className="text-green-400 ml-1">(Unlimited)</span>}
-                </span>
+              <div className="mb-4">
+                <h3 className="font-bold text-foreground">{plan.name}</h3>
+                <div className="mt-2">
+                  <span className="text-3xl font-extrabold text-foreground">${plan.price}</span>
+                  <span className="text-muted-foreground text-sm">/mo</span>
+                </div>
               </div>
-              {!isUnlimitedPosts && (
-                <Progress value={postsPercentage} className="h-2" />
+              <ul className="space-y-2 mb-6 flex-1">
+                {features.map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              {isCurrent ? (
+                <div className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary/15 text-primary text-sm font-medium">
+                  <Zap className="w-4 h-4" /> Current Plan
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleSubscribe(key)}
+                  disabled={createCheckout.isPending}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-lg font-semibold text-sm transition-all disabled:opacity-50 ${
+                    popular
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "border border-border text-foreground hover:border-primary/50 hover:text-primary"
+                  }`}
+                >
+                  {createCheckout.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CreditCard className="w-4 h-4" />
+                  )}
+                  {currentPlan === "free" ? "Subscribe" : "Switch Plan"}
+                </button>
               )}
-              {!isUnlimitedPosts && postsPercentage >= 80 && (
-                <p className="text-xs text-yellow-400 mt-1">Approaching limit — upgrade for more posts</p>
-              )}
             </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span>AI Generations</span>
-                <span className="font-medium">{usageData?.aiGenerations || 0}</span>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span>Platforms Connected</span>
-                <span className="font-medium">
-                  {usageData?.platformsConnected || 0}
-                  {limits && limits.maxPlatforms > 0 && ` / ${limits.maxPlatforms}`}
-                  {limits?.maxPlatforms === -1 && <span className="text-green-400 ml-1">(Unlimited)</span>}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Plans */}
-        <div>
-          <h3 className="text-lg font-semibold mb-4">Available Plans</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {plans.map((plan) => {
-              const Icon = plan.icon;
-              const isCurrent = currentPlan === plan.id;
-              const isDowngrade = plans.findIndex(p => p.id === currentPlan) > plans.findIndex(p => p.id === plan.id);
-              return (
-                <Card key={plan.id} className={`bg-card border-border ${plan.popular ? "ring-1 ring-primary" : ""} ${isCurrent ? "border-green-500/30" : ""}`}>
-                  <CardContent className="p-5">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Icon className="w-5 h-5 text-primary" />
-                      <h3 className="font-semibold">{plan.name}</h3>
-                      {plan.popular && <Badge className="gradient-orange text-black text-[10px]">Popular</Badge>}
-                      {isCurrent && <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20 text-[10px]">Current</Badge>}
-                    </div>
-                    <p className="text-3xl font-bold">{plan.price}<span className="text-sm font-normal text-muted-foreground">{plan.period}</span></p>
-                    <ul className="mt-4 space-y-2">
-                      {plan.features.map((f, i) => (
-                        <li key={i} className="flex items-center gap-2 text-sm">
-                          <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
-                          {f}
-                        </li>
-                      ))}
-                      {plan.lockedFeatures.map((f, i) => (
-                        <li key={`locked-${i}`} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Lock className="w-4 h-4 shrink-0" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      className={`w-full mt-4 ${!isCurrent && !isDowngrade ? "gradient-orange text-black font-semibold hover:opacity-90" : ""}`}
-                      variant={isCurrent || isDowngrade ? "outline" : "default"}
-                      disabled={isCurrent}
-                      onClick={() => handleUpgrade(plan.id)}
-                    >
-                      {isCurrent ? "Current Plan" : isDowngrade ? "Downgrade" : "Upgrade"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Invoice History */}
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-base">Invoice History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {invoicesLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
-              </div>
-            ) : invoices && invoices.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-muted-foreground">
-                      <th className="text-left py-3 px-2">Date</th>
-                      <th className="text-left py-3 px-2">Description</th>
-                      <th className="text-left py-3 px-2">Amount</th>
-                      <th className="text-left py-3 px-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoices.map((inv: any) => (
-                      <tr key={inv.id} className="border-b border-border last:border-0">
-                        <td className="py-3 px-2">{new Date(inv.createdAt).toLocaleDateString()}</td>
-                        <td className="py-3 px-2">{inv.description || "Subscription payment"}</td>
-                        <td className="py-3 px-2 font-medium">${((inv.amount || 0) / 100).toFixed(2)}</td>
-                        <td className="py-3 px-2">
-                          <Badge variant="outline" className={
-                            inv.status === "paid" ? "bg-green-500/10 text-green-400 border-green-500/20" :
-                            inv.status === "failed" ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                            "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
-                          }>
-                            {inv.status}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                <Inbox className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-sm">No invoices yet</p>
-                <p className="text-xs mt-1">Invoices will appear here after your first payment</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          );
+        })}
       </div>
-    </AppLayout>
+
+      <p className="text-xs text-muted-foreground text-center mt-6">
+        Payments processed securely by Stripe. Cancel anytime from the billing portal.
+      </p>
+    </div>
   );
 }
