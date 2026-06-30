@@ -10,7 +10,7 @@ services:
     repo: https://github.com/paisabrazilfl-cpu/contentflow-ai
     branch: main
     autoDeploy: true
-    buildCommand: pnpm install && pnpm run build
+    buildCommand: echo "dist/ pre-built and committed"
     startCommand: node dist/index.js
     healthCheckPath: /
     envVars:

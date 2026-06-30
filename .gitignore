@@ -3,7 +3,7 @@
 .pnpm-store/
 
 # Build outputs
-dist/
+# Note: dist/ IS committed — pre-built for Render deployment (npm install times out on Render free tier)
 build/
 *.dist
 
