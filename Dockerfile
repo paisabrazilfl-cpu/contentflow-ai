@@ -1,8 +1,7 @@
-# Use Debian-based node image for better npm package compatibility
-FROM node:20
+# Minimal Docker runtime (not used by current Node.js deployment)
+# Kept for reference — NOT used by the active Node.js service
+FROM node:20-alpine
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
 COPY dist/ ./dist/
 ENV NODE_ENV=production
 ENV PORT=10000
