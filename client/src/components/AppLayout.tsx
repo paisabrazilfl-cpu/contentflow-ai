@@ -85,7 +85,7 @@ export default function AppLayout({
             </p>
           </div>
           <Button
-            onClick={() => { window.location.href = getLoginUrl("/dashboard"); }}
+            onClick={() => { window.location.href = getLoginUrl(); }}
             size="lg"
             className="w-full gradient-orange text-black font-semibold hover:opacity-90"
           >

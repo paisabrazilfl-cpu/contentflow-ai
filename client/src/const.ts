@@ -10,9 +10,14 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
  * On the Manus deployment itself, VITE_APP_URL is not needed because
  * window.location.origin is already the authorized domain.
  */
-export const getLoginUrl = () => {
+export const getLoginUrl = (postAuthPath = "/dashboard") => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
+
+  // Guard: if env vars aren't set, auth is unavailable — redirect to setup page
+  if (!oauthPortalUrl || !appId) {
+    return `${window.location.origin}/?setup_error=oauth_not_configured`;
+  }
 
   // Use VITE_APP_URL override when provided (e.g. Render → Manus domain),
   // otherwise fall back to the current origin.
@@ -21,7 +26,7 @@ export const getLoginUrl = () => {
     window.location.origin;
 
   const redirectUri = `${appOrigin}/api/oauth/callback`;
-  const state = btoa(redirectUri);
+  const state = btoa(JSON.stringify({ redirectUri, postAuthPath }));
 
   const url = new URL(`${oauthPortalUrl}/app-auth`);
   url.searchParams.set("appId", appId);
