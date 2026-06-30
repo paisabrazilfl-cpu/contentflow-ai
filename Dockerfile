@@ -1,9 +1,8 @@
-# Dependencies needed at runtime for external imports (drizzle-orm, express, jose, etc.)
+# Runtime: full install (including dev deps) to ensure no missing packages
 FROM node:20-alpine
 WORKDIR /app
 COPY package.json ./
-# Use --legacy-peer-deps to bypass vite@7 vs @builder.io/vite-plugin-jsx-loc peer conflict
-RUN npm install --omit=dev --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 COPY dist/ ./dist/
 ENV NODE_ENV=production
 ENV PORT=10000
