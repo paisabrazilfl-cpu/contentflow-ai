@@ -1,8 +1,11 @@
-# Runtime: node_modules needed for external imports (drizzle-orm, express, jose, etc.)
+# Runtime: dependencies required for external imports (drizzle-orm, express, jose, etc.)
 FROM node:20-alpine
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts
+# Install pnpm (faster than npm for large workspaces)
+RUN npm install -g pnpm
+COPY package.json pnpm-lock.yaml ./
+# pnpm is faster than npm; install production deps only
+RUN pnpm install --prod
 COPY dist/ ./dist/
 ENV NODE_ENV=production
 ENV PORT=10000
