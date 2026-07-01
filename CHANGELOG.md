@@ -6,6 +6,25 @@ Format: `YYYY-MM-DD — Branch: description`
 
 ---
 
+## 2026-07-01
+
+**Branch:** `2026-07-01/replace-oauth-with-credentials-login`
+
+### Changes
+- Replace Manus OAuth with simple username/password login
+- **Credentials:** `Luis` / `1234`
+- Add `auth.login` tRPC procedure — validates credentials, signs JWT session cookie
+- Fix `sdk.authenticateRequest` — creates user from JWT payload when DB not configured
+- Create `/login` page with username/password form
+- Update `getLoginUrl()` to redirect to `/login`
+- Update `main.tsx` and `AppLayout` unauthorized redirects
+- Add stable fallback `cookieSecret` in `env.ts` when `JWT_SECRET` not set
+
+### Known Issues
+- Repo temporarily made public for Render access — re-private after QA verified
+
+---
+
 ## 2026-06-30
 
 **Branch:** `2026-06-30/add-a2e-video-provider`

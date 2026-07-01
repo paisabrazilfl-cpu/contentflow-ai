@@ -1,6 +1,20 @@
 # AI Notes
 
-## Model: Manus (Manus Auth + Forge API)
+## Model: Manus (Forge API only — Auth replaced)
+
+### Why
+- Forge API covers LLM, storage, notifications, data API — one key does everything
+
+### Auth — REPLACED (2026-07-01)
+- **Old:** Manus OAuth (required `VITE_APP_ID`, `VITE_OAUTH_PORTAL_URL`, `OAUTH_SERVER_URL`)
+- **New:** Simple credentials — `Luis` / `1234` via `/login`
+- Manus OAuth removed entirely — no third-party auth required
+- User is created from JWT payload on login — works even without DATABASE_URL
+
+### Risks
+- No real auth — hardcoded credentials (internal tool only)
+- `JWT_SECRET` env var must be set on Render for production session security
+- App is tightly coupled to the hardcoded user `Luis`
 
 ### Why
 - OAuth out of the box — auth flow is pre-wired (`/api/oauth/callback`)

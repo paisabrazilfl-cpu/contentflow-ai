@@ -173,22 +173,70 @@ import postgres from "postgres";
 
 // server/_core/env.ts
 var ENV = {
+  // Core App
   appId: process.env.VITE_APP_ID ?? "",
-  cookieSecret: process.env.JWT_SECRET ?? "",
-  databaseUrl: process.env.DATABASE_URL ?? "",
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+  // Session signing key — must be set via JWT_SECRET env var in production
+  // Fallback only for local dev where env var may not be configured
+  cookieSecret: process.env.JWT_SECRET ?? "cf-prod-secret-do-not-share-32bytes!!",
+  appUrl: process.env.VITE_APP_URL ?? "",
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+  ownerName: process.env.OWNER_NAME ?? "",
   isProduction: process.env.NODE_ENV === "production",
+  cronSecret: process.env.CRON_SECRET ?? "",
+  // Database
+  databaseUrl: process.env.DATABASE_URL ?? "",
+  // Manus/Forge LLM
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? ""
+  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  frontendForgeApiUrl: process.env.VITE_FRONTEND_FORGE_API_URL ?? "",
+  frontendForgeApiKey: process.env.VITE_FRONTEND_FORGE_API_KEY ?? "",
+  // OAuth (Manus Platform)
+  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+  oauthPortalUrl: process.env.VITE_OAUTH_PORTAL_URL ?? "",
+  // AI Model Keys
+  openAiKey: process.env.OPENAI_API_KEY ?? "",
+  anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
+  nvidiaKey: process.env.NVIDIA_API_KEY ?? "",
+  kimiKey: process.env.KIMI_API_KEY ?? "",
+  geminiKey: process.env.GEMINI_API_KEY ?? "",
+  openRouterKey: process.env.OPENROUTER_API_KEY ?? "",
+  embeddingsKey: process.env.EMBEDDINGS_API_KEY ?? "",
+  // Stripe Billing
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+  stripePriceStarter: process.env.STRIPE_PRICE_ID_STARTER ?? "",
+  stripePricePro: process.env.STRIPE_PRICE_ID_PRO ?? "",
+  stripePriceAgency: process.env.STRIPE_PRICE_ID_AGENCY ?? "",
+  // OAuth Providers (Platform Connections)
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  metaAppId: process.env.META_APP_ID ?? "",
+  metaAppSecret: process.env.META_APP_SECRET ?? "",
+  tiktokClientKey: process.env.TIKTOK_CLIENT_KEY ?? "",
+  tiktokClientSecret: process.env.TIKTOK_CLIENT_SECRET ?? "",
+  redditClientId: process.env.REDDIT_CLIENT_ID ?? "",
+  redditClientSecret: process.env.REDDIT_CLIENT_SECRET ?? "",
+  // Email
+  resendApiKey: process.env.RESEND_API_KEY ?? "",
+  fromEmail: process.env.FROM_EMAIL ?? "",
+  // Video Generation (A2E)
+  a2eApiKey: process.env.A2E_API_KEY ?? "",
+  a2eApiUrl: process.env.A2E_API_URL ?? "",
+  // Storage / Infra
+  pineconeKey: process.env.PINECONE_API_KEY ?? "",
+  pineconeIndex: process.env.PINECONE_INDEX ?? "",
+  inngestKey: process.env.INNGEST_API_KEY ?? "",
+  langchainKey: process.env.LANGCHAIN_API_KEY ?? "",
+  discordBotToken: process.env.DISCORD_BOT_TOKEN ?? "",
+  composioKey: process.env.COMPOSIO_API_KEY ?? ""
 };
 
 // server/db.ts
 var _db = null;
 async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  if (!_db && ENV.databaseUrl) {
     try {
-      const client = postgres(process.env.DATABASE_URL);
+      const client = postgres(ENV.databaseUrl);
       _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
@@ -936,8 +984,8 @@ function buildCronUser(userInfo) {
 var sdk = new SDKServer();
 
 // server/google-oauth.ts
-var GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
-var GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+var GOOGLE_CLIENT_ID = ENV.googleClientId;
+var GOOGLE_CLIENT_SECRET = ENV.googleClientSecret;
 var GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth";
 var GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
 var SCOPES = [
@@ -1091,8 +1139,8 @@ function registerOAuthRoutes(app) {
 // server/stripe-routes.ts
 init_schema();
 import { eq as eq2 } from "drizzle-orm";
-var STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
-var STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+var STRIPE_SECRET_KEY = ENV.stripeSecretKey;
+var STRIPE_WEBHOOK_SECRET = ENV.stripeWebhookSecret;
 var PLANS = {
   starter: { priceAmount: 9700, name: "ContentFlow Starter ($97/mo)", tier: "starter" },
   pro: { priceAmount: 19700, name: "ContentFlow Pro ($197/mo)", tier: "pro" },
@@ -1373,7 +1421,7 @@ var normalizeToolChoice = (toolChoice, tools) => {
 var resolveApiUrl = () => ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0 ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions` : "https://forge.manus.im/v1/chat/completions";
 var assertApiKey = () => {
   if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+    throw new Error("BUILT_IN_FORGE_API_KEY is not configured");
   }
 };
 var normalizeResponseFormat = ({
@@ -1924,7 +1972,7 @@ async function runScheduledPublishing() {
 function registerCronRoutes(app) {
   app.post("/api/cron/publish", async (req, res) => {
     const authHeader = req.headers.authorization;
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = ENV.cronSecret;
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       res.status(401).json({ error: "Unauthorized" });
       return;
@@ -1939,7 +1987,7 @@ function registerCronRoutes(app) {
   });
   app.get("/api/cron/publish", async (req, res) => {
     const token = req.query.token;
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = ENV.cronSecret;
     if (cronSecret && token !== cronSecret) {
       res.status(401).json({ error: "Unauthorized. Pass ?token=YOUR_CRON_SECRET" });
       return;
@@ -2362,8 +2410,8 @@ Score each dimension and provide an overall AI visibility score 0-100.`
 }
 
 // server/email-system.ts
-var RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-var FROM_EMAIL = process.env.FROM_EMAIL || "notifications@contentflow.ai";
+var RESEND_API_KEY = ENV.resendApiKey;
+var FROM_EMAIL = ENV.fromEmail || "notifications@contentflow.ai";
 async function sendEmail(payload) {
   if (RESEND_API_KEY) {
     try {

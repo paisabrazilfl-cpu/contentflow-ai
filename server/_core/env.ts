@@ -1,7 +1,9 @@
 export const ENV = {
   // Core App
   appId: process.env.VITE_APP_ID ?? "",
-  cookieSecret: process.env.JWT_SECRET ?? "",
+  // Session signing key — must be set via JWT_SECRET env var in production
+  // Fallback only for local dev where env var may not be configured
+  cookieSecret: process.env.JWT_SECRET ?? "cf-prod-secret-do-not-share-32bytes!!",
   appUrl: process.env.VITE_APP_URL ?? "",
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   ownerName: process.env.OWNER_NAME ?? "",
