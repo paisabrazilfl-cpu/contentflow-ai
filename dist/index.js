@@ -2792,6 +2792,22 @@ var appRouter = router({
       if (!business) throw new TRPCError3({ code: "NOT_FOUND", message: "Business not found" });
       const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
       if (!platformCheck.allowed) throw new TRPCError3({ code: "FORBIDDEN", message: platformCheck.message });
+      if (composio.composioEnabled() && !input.accessToken) {
+        const result = await composio.initiateConnection(String(ctx.user.id), input.platform);
+        if ("error" in result) {
+          throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+        }
+        await addConnectedAccount({
+          businessId: business.id,
+          platform: input.platform,
+          platformAccountId: result.connectionId,
+          accountName: `Pending OAuth (${input.platform})`,
+          accessToken: result.redirectUrl,
+          // store redirect URL temporarily
+          refreshToken: null
+        });
+        return { success: true, redirectUrl: result.redirectUrl, connectionId: result.connectionId };
+      }
       await addConnectedAccount({
         businessId: business.id,
         platform: input.platform,
@@ -2801,6 +2817,42 @@ var appRouter = router({
         refreshToken: input.refreshToken
       });
       return { success: true };
+    }),
+    // List Composio-connected accounts
+    composioList: protectedProcedure.query(async ({ ctx }) => {
+      if (!composio.composioEnabled()) return [];
+      return composio.listConnections(String(ctx.user.id));
+    }),
+    // Initiate OAuth via Composio
+    composioConnect: protectedProcedure.input(z2.object({
+      platform: z2.string()
+    })).mutation(async ({ ctx, input }) => {
+      const business = await getBusinessByUserId(ctx.user.id);
+      if (!business) throw new TRPCError3({ code: "NOT_FOUND", message: "Business not found" });
+      const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
+      if (!platformCheck.allowed) throw new TRPCError3({ code: "FORBIDDEN", message: platformCheck.message });
+      if (!composio.composioEnabled()) {
+        throw new TRPCError3({ code: "PRECONDITION_FAILED", message: "Composio not configured. Set COMPOSIO_API_KEY." });
+      }
+      const result = await composio.initiateConnection(String(ctx.user.id), input.platform);
+      if ("error" in result) {
+        throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+      }
+      return result;
+    }),
+    // Check connection status after OAuth callback
+    composioStatus: protectedProcedure.input(z2.object({
+      connectionId: z2.string()
+    })).query(async ({ input }) => {
+      if (!composio.composioEnabled()) return null;
+      return composio.getConnection(input.connectionId);
+    }),
+    // Disconnect via Composio
+    composioDisconnect: protectedProcedure.input(z2.object({
+      connectionId: z2.string()
+    })).mutation(async ({ input }) => {
+      if (!composio.composioEnabled()) return { success: false };
+      return { success: await composio.disconnect(input.connectionId) };
     }),
     disconnect: protectedProcedure.input(z2.object({
       id: z2.number()

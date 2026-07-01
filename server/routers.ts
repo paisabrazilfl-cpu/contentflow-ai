@@ -134,6 +134,26 @@ export const appRouter = router({
       // Plan enforcement: check platform limit
       const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
       if (!platformCheck.allowed) throw new TRPCError({ code: 'FORBIDDEN', message: platformCheck.message });
+
+      // If Composio is enabled, use it for OAuth
+      if (composio.composioEnabled() && !input.accessToken) {
+        const result = await composio.initiateConnection(String(ctx.user.id), input.platform);
+        if ('error' in result) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error });
+        }
+        // Store pending connection
+        await db.addConnectedAccount({
+          businessId: business.id,
+          platform: input.platform,
+          platformAccountId: result.connectionId,
+          accountName: `Pending OAuth (${input.platform})`,
+          accessToken: result.redirectUrl, // store redirect URL temporarily
+          refreshToken: null,
+        });
+        return { success: true, redirectUrl: result.redirectUrl, connectionId: result.connectionId };
+      }
+
+      // Fallback: direct credential-based connection
       await db.addConnectedAccount({
         businessId: business.id,
         platform: input.platform,
@@ -143,6 +163,48 @@ export const appRouter = router({
         refreshToken: input.refreshToken,
       });
       return { success: true };
+    }),
+
+    // List Composio-connected accounts
+    composioList: protectedProcedure.query(async ({ ctx }) => {
+      if (!composio.composioEnabled()) return [];
+      return composio.listConnections(String(ctx.user.id));
+    }),
+
+    // Initiate OAuth via Composio
+    composioConnect: protectedProcedure.input(z.object({
+      platform: z.string(),
+    })).mutation(async ({ ctx, input }) => {
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) throw new TRPCError({ code: 'NOT_FOUND', message: 'Business not found' });
+      const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
+      if (!platformCheck.allowed) throw new TRPCError({ code: 'FORBIDDEN', message: platformCheck.message });
+
+      if (!composio.composioEnabled()) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Composio not configured. Set COMPOSIO_API_KEY.' });
+      }
+
+      const result = await composio.initiateConnection(String(ctx.user.id), input.platform);
+      if ('error' in result) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error });
+      }
+      return result;
+    }),
+
+    // Check connection status after OAuth callback
+    composioStatus: protectedProcedure.input(z.object({
+      connectionId: z.string(),
+    })).query(async ({ input }) => {
+      if (!composio.composioEnabled()) return null;
+      return composio.getConnection(input.connectionId);
+    }),
+
+    // Disconnect via Composio
+    composioDisconnect: protectedProcedure.input(z.object({
+      connectionId: z.string(),
+    })).mutation(async ({ input }) => {
+      if (!composio.composioEnabled()) return { success: false };
+      return { success: await composio.disconnect(input.connectionId) };
     }),
     disconnect: protectedProcedure.input(z.object({
       id: z.number(),
