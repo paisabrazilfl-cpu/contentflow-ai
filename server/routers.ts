@@ -49,6 +49,22 @@ export const appRouter = router({
         verifyResult,
       };
     }),
+    contentQuery: publicProcedure.query(async () => {
+      try {
+        const _pgModule = await import("postgres");
+        const pgConn = process.env.DATABASE_URL;
+        if (!pgConn) return { error: "no_url" };
+        const client = _pgModule.default(pgConn, { ssl: false });
+        try {
+          const r = await client.unsafe(`SELECT title FROM content_queue WHERE "businessId" = $1 ORDER BY "createdAt" DESC LIMIT $2`, [1, 50]);
+          return { rows: r, count: r.length };
+        } finally {
+          await client.end();
+        }
+      } catch (e: any) {
+        return { error: e?.message || String(e), code: e?.code, hint: e?.hint };
+      }
+    }),
     testQuery: publicProcedure.query(async () => {
       try {
         const db = await import("./db").then(m => m.getDb());
