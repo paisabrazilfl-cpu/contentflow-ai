@@ -3024,10 +3024,10 @@ var appRouter = router({
       try {
         const db = await Promise.resolve().then(() => (init_db(), db_exports)).then((m) => m.getDb());
         if (!db) return { error: "no_drizzle" };
-        const { contentQueue: contentQueue2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { contentQueue: contentQueue2, users: users2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { eq: eq7, desc: desc2 } = await import("drizzle-orm");
-        const items = await db.select({ title: contentQueue2.title }).from(contentQueue2).where(eq7(contentQueue2.businessId, 1)).orderBy(desc2(contentQueue2.createdAt)).limit(50);
-        return { items, count: items.length };
+        const userRows = await db.select().from(users2).limit(1);
+        return { userRows, count: userRows.length };
       } catch (e) {
         return { error: e?.message || String(e), code: e?.code, hint: e?.hint, query: e?.query };
       }

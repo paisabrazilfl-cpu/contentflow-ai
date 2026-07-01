@@ -53,14 +53,11 @@ export const appRouter = router({
       try {
         const db = await import("./db").then(m => m.getDb());
         if (!db) return { error: "no_drizzle" };
-        const { contentQueue } = await import("../drizzle/schema");
+        const { contentQueue, users } = await import("../drizzle/schema");
         const { eq, desc } = await import("drizzle-orm");
-        const items = await db.select({ title: contentQueue.title })
-          .from(contentQueue)
-          .where(eq(contentQueue.businessId, 1))
-          .orderBy(desc(contentQueue.createdAt))
-          .limit(50);
-        return { items, count: items.length };
+        // Try a simple query first
+        const userRows = await db.select().from(users).limit(1);
+        return { userRows, count: userRows.length };
       } catch (e: any) {
         return { error: e?.message || String(e), code: e?.code, hint: e?.hint, query: e?.query };
       }
