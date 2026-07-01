@@ -13,7 +13,7 @@ export const ENV = {
   // Database
   databaseUrl: process.env.DATABASE_URL ?? "",
 
-  // Manus/Forge LLM
+  // Manus/Forge LLM (legacy — replaced by direct provider keys)
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   frontendForgeApiUrl: process.env.VITE_FRONTEND_FORGE_API_URL ?? "",
@@ -39,7 +39,7 @@ export const ENV = {
   stripePricePro: process.env.STRIPE_PRICE_ID_PRO ?? "",
   stripePriceAgency: process.env.STRIPE_PRICE_ID_AGENCY ?? "",
 
-  // OAuth Providers (Platform Connections)
+  // OAuth Providers (Platform Connections - direct)
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   metaAppId: process.env.META_APP_ID ?? "",
@@ -51,7 +51,8 @@ export const ENV = {
 
   // Email
   resendApiKey: process.env.RESEND_API_KEY ?? "",
-  fromEmail: process.env.FROM_EMAIL ?? "",
+  fromEmail: process.env.FROM_EMAIL ?? process.env.RESEND_FROM ?? "",
+  resendFrom: process.env.RESEND_FROM ?? process.env.FROM_EMAIL ?? "",
 
   // Video Generation (A2E)
   a2eApiKey: process.env.A2E_API_KEY ?? "",
@@ -61,7 +62,26 @@ export const ENV = {
   pineconeKey: process.env.PINECONE_API_KEY ?? "",
   pineconeIndex: process.env.PINECONE_INDEX ?? "",
   inngestKey: process.env.INNGEST_API_KEY ?? "",
+  inngestEventKey: process.env.INNGEST_EVENT_KEY ?? "",
   langchainKey: process.env.LANGCHAIN_API_KEY ?? "",
   discordBotToken: process.env.DISCORD_BOT_TOKEN ?? "",
   composioKey: process.env.COMPOSIO_API_KEY ?? "",
+
+  // Web Scraping / Data
+  firecrawlKey: process.env.FIRECRAWL_API_KEY ?? "",
+  scrapingBeeKey: process.env.SCRAPINGBEE_API_KEY ?? "",
+  scrapflyKey: process.env.SCRAPFLY_API_KEY ?? "",
+  tavilyKey: process.env.TAVILY_API_KEY ?? "",
+  exaKey: process.env.EXA_API_KEY ?? "",
+
+  // Screenshots
+  screenshotOneAccess: process.env.SCREENSHOTONE_ACCESS_KEY ?? "",
+  screenshotOneSecret: process.env.SCREENSHOTONE_SECRET_KEY ?? "",
+  steelKey: process.env.STEEL_API_KEY ?? "",
+
+  // LLM Observability
+  heliconeKey: process.env.HELICONE_API_KEY ?? "",
+
+  // Code Execution (sandboxed)
+  e2bKey: process.env.E2B_API_KEY ?? "",
 };
