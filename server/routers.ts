@@ -48,6 +48,16 @@ export const appRouter = router({
         verifyResult,
       };
     }),
+    dbSchema: publicProcedure.query(async () => {
+      try {
+        const db = await import("./db").then(m => m.getDb());
+        if (!db) return { error: "no_db_pool" };
+        const r = await db.execute({ sql: "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position", params: [] } as any);
+        return { columns: (r as any).rows || r };
+      } catch (e: any) {
+        return { error: e?.message || String(e) };
+      }
+    }),
     me: publicProcedure.query(opts => opts.ctx.user),
     login: publicProcedure
       .input(z.object({ username: z.string(), password: z.string() }))

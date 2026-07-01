@@ -3010,6 +3010,16 @@ var appRouter = router({
         verifyResult
       };
     }),
+    dbSchema: publicProcedure.query(async () => {
+      try {
+        const db = await Promise.resolve().then(() => (init_db(), db_exports)).then((m) => m.getDb());
+        if (!db) return { error: "no_db_pool" };
+        const r = await db.execute({ sql: "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position", params: [] });
+        return { columns: r.rows || r };
+      } catch (e) {
+        return { error: e?.message || String(e) };
+      }
+    }),
     me: publicProcedure.query((opts) => opts.ctx.user),
     login: publicProcedure.input(z2.object({ username: z2.string(), password: z2.string() })).mutation(async ({ ctx, input }) => {
       if (input.username.trim().toLowerCase() !== "luis" || input.password.trim() !== "1234") {
