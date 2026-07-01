@@ -13,6 +13,7 @@ import { analyzeBusinessWebsite } from "./business-analyzer";
 import { scoreContent, getRecentTitles } from "./content-quality";
 import { checkAIVisibility } from "./ai-visibility";
 import { sendWelcomeEmail } from "./email-system";
+import * as memoryStore from "./memory-store";
 import { canConnectPlatform, canPublishContent, canUseContentType, canUseFeature, getOrCreateUsage, incrementUsage, getPlanLimits } from "./plan-limits";
 import * as composio from "./composio";
 
@@ -217,39 +218,56 @@ export const appRouter = router({
       contentTypes: z.any().optional(),
       autoApprove: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
-      // Use raw SQL since drizzle schema is MySQL but DB is PostgreSQL
-      let userId: number = ctx.user.id;
+      // Use raw SQL via postgres.js client (drizzle schema is MySQL, DB is PostgreSQL)
       try {
-        const dbInst = await import("./db");
-        const pool = dbInst.getDb();
-        const rawPool = (pool as any).$client || (dbInst as any)._dbClient;
-        if (rawPool && rawPool.unsafe) {
-          // Upsert user with raw SQL
-          await rawPool.unsafe(
-            `INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn")
-             VALUES ($1, $2, $3, $4, $5, NOW())
-             ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()
-             RETURNING id`,
-            [ctx.user.openId, ctx.user.name || "User", ctx.user.email || null, ctx.user.loginMethod || "credentials", "admin"]
-          ).then((r: any) => {
-            if (r && r[0] && r[0].id) userId = r[0].id;
-          }).catch((e: any) => console.error("[Business.create] user upsert error:", e?.message));
+        const postgres = (await import("postgres")).default;
+        const pgConn = process.env.DATABASE_URL;
+        if (!pgConn) throw new Error("No DATABASE_URL");
+        const client = postgres(pgConn, { ssl: false });
 
-          // Insert business
-          await rawPool.unsafe(
-            `INSERT INTO businesses ("userId", name, industry, "targetAudience", "toneOfVoice", "websiteUrl", description, timezone, "topicClusters", "contentTypes", "postingSchedule", "autoApprove")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)`,
-            [
-               userId, input.name, input.industry || null, input.targetAudience || null,
-               input.toneOfVoice || null, input.websiteUrl || null, input.description || null,
-               input.timezone || "UTC",
-               JSON.stringify(input.topicClusters || []),
-               JSON.stringify(input.contentTypes || []),
-               JSON.stringify(input.postingSchedule || []),
-               input.autoApprove || false,
-             ]
-          );
-          console.log(`[Business.create] Created for userId=${userId}, name=${input.name}`);
+        try {
+          // Step 1: Upsert user and get real DB id
+          const userRows = await client`INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn")
+             VALUES (${ctx.user.openId}, ${ctx.user.name || "User"}, ${ctx.user.email || null}, ${ctx.user.loginMethod || "credentials"}, ${"admin"}, NOW())
+             ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()
+             RETURNING id`;
+
+          let userId: number = ctx.user.id;
+          if (userRows && userRows[0] && userRows[0].id) {
+            userId = userRows[0].id;
+          } else {
+            // Try to fetch existing
+            const existing = await client`SELECT id FROM users WHERE "openId" = ${ctx.user.openId} LIMIT 1`;
+            if (existing && existing[0] && existing[0].id) userId = existing[0].id;
+          }
+
+          // Step 2: Insert business
+          const bizRows = await client`INSERT INTO businesses ("userId", name, industry, "targetAudience", "toneOfVoice", "websiteUrl", description, timezone, "topicClusters", "contentTypes", "postingSchedule", "autoApprove")
+             VALUES (${userId}, ${input.name}, ${input.industry || null}, ${input.targetAudience || null}, ${input.toneOfVoice || null}, ${input.websiteUrl || null}, ${input.description || null}, ${input.timezone || "UTC"}, ${JSON.stringify(input.topicClusters || [])}::jsonb, ${JSON.stringify(input.contentTypes || [])}::jsonb, ${JSON.stringify(input.postingSchedule || [])}::jsonb, ${input.autoApprove || false})
+             RETURNING id`;
+
+          console.log(`[Business.create] Created for userId=${userId}, name=${input.name}, bizId=${bizRows[0]?.id}`);
+
+          // Also store in memory for fast access
+          memoryStore.addBusiness({
+            id: bizRows[0]?.id || 0,
+            userId,
+            name: input.name,
+            industry: input.industry,
+            targetAudience: input.targetAudience,
+            toneOfVoice: input.toneOfVoice,
+            websiteUrl: input.websiteUrl,
+            description: input.description,
+            timezone: input.timezone || "UTC",
+            topicClusters: input.topicClusters || [],
+            contentTypes: input.contentTypes || [],
+            postingSchedule: input.postingSchedule || [],
+            autoApprove: input.autoApprove || false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } finally {
+          await client.end();
         }
       } catch (e: any) {
         console.error("[Business.create] FAILED:", e?.message || String(e));

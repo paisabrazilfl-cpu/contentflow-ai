@@ -2701,6 +2701,9 @@ async function sendWelcomeEmail(email, businessName) {
   });
 }
 
+// server/routers.ts
+init_memory_store();
+
 // server/plan-limits.ts
 init_db();
 init_schema();
@@ -3163,40 +3166,46 @@ var appRouter = router({
       contentTypes: z2.any().optional(),
       autoApprove: z2.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
-      let userId = ctx.user.id;
       try {
-        const dbInst = await Promise.resolve().then(() => (init_db(), db_exports));
-        const pool = dbInst.getDb();
-        const rawPool = pool.$client || dbInst._dbClient;
-        if (rawPool && rawPool.unsafe) {
-          await rawPool.unsafe(
-            `INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn")
-             VALUES ($1, $2, $3, $4, $5, NOW())
+        const postgres2 = (await import("postgres")).default;
+        const pgConn = process.env.DATABASE_URL;
+        if (!pgConn) throw new Error("No DATABASE_URL");
+        const client = postgres2(pgConn, { ssl: false });
+        try {
+          const userRows = await client`INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn")
+             VALUES (${ctx.user.openId}, ${ctx.user.name || "User"}, ${ctx.user.email || null}, ${ctx.user.loginMethod || "credentials"}, ${"admin"}, NOW())
              ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()
-             RETURNING id`,
-            [ctx.user.openId, ctx.user.name || "User", ctx.user.email || null, ctx.user.loginMethod || "credentials", "admin"]
-          ).then((r) => {
-            if (r && r[0] && r[0].id) userId = r[0].id;
-          }).catch((e) => console.error("[Business.create] user upsert error:", e?.message));
-          await rawPool.unsafe(
-            `INSERT INTO businesses ("userId", name, industry, "targetAudience", "toneOfVoice", "websiteUrl", description, timezone, "topicClusters", "contentTypes", "postingSchedule", "autoApprove")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)`,
-            [
-              userId,
-              input.name,
-              input.industry || null,
-              input.targetAudience || null,
-              input.toneOfVoice || null,
-              input.websiteUrl || null,
-              input.description || null,
-              input.timezone || "UTC",
-              JSON.stringify(input.topicClusters || []),
-              JSON.stringify(input.contentTypes || []),
-              JSON.stringify(input.postingSchedule || []),
-              input.autoApprove || false
-            ]
-          );
-          console.log(`[Business.create] Created for userId=${userId}, name=${input.name}`);
+             RETURNING id`;
+          let userId = ctx.user.id;
+          if (userRows && userRows[0] && userRows[0].id) {
+            userId = userRows[0].id;
+          } else {
+            const existing = await client`SELECT id FROM users WHERE "openId" = ${ctx.user.openId} LIMIT 1`;
+            if (existing && existing[0] && existing[0].id) userId = existing[0].id;
+          }
+          const bizRows = await client`INSERT INTO businesses ("userId", name, industry, "targetAudience", "toneOfVoice", "websiteUrl", description, timezone, "topicClusters", "contentTypes", "postingSchedule", "autoApprove")
+             VALUES (${userId}, ${input.name}, ${input.industry || null}, ${input.targetAudience || null}, ${input.toneOfVoice || null}, ${input.websiteUrl || null}, ${input.description || null}, ${input.timezone || "UTC"}, ${JSON.stringify(input.topicClusters || [])}::jsonb, ${JSON.stringify(input.contentTypes || [])}::jsonb, ${JSON.stringify(input.postingSchedule || [])}::jsonb, ${input.autoApprove || false})
+             RETURNING id`;
+          console.log(`[Business.create] Created for userId=${userId}, name=${input.name}, bizId=${bizRows[0]?.id}`);
+          (void 0)({
+            id: bizRows[0]?.id || 0,
+            userId,
+            name: input.name,
+            industry: input.industry,
+            targetAudience: input.targetAudience,
+            toneOfVoice: input.toneOfVoice,
+            websiteUrl: input.websiteUrl,
+            description: input.description,
+            timezone: input.timezone || "UTC",
+            topicClusters: input.topicClusters || [],
+            contentTypes: input.contentTypes || [],
+            postingSchedule: input.postingSchedule || [],
+            autoApprove: input.autoApprove || false,
+            createdAt: /* @__PURE__ */ new Date(),
+            updatedAt: /* @__PURE__ */ new Date()
+          });
+        } finally {
+          await client.end();
         }
       } catch (e) {
         console.error("[Business.create] FAILED:", e?.message || String(e));
