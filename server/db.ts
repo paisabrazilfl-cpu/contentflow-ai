@@ -134,11 +134,18 @@ export async function getBusinessByUserId(userId: number) {
   }
 
   try {
+    // Use raw SQL since drizzle schema is MySQL but DB is PostgreSQL
+    const pool = (db as any).$client;
+    if (pool && pool.unsafe) {
+      const r = await pool.unsafe(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
+      if (r && r.length > 0) return r[0];
+      return undefined;
+    }
     const result = await db.select().from(businesses).where(eq(businesses.userId, userId)).limit(1);
     return result.length > 0 ? result[0] : undefined;
   } catch (error) {
     console.error("[Database] Failed to get business by userId:", error);
-    return undefined;
+    return memoryStore.getBusinessByUserId(userId);
   }
 }
 

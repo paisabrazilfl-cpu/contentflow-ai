@@ -454,11 +454,17 @@ async function getBusinessByUserId(userId) {
     return memoryStore.getBusinessByUserId(userId);
   }
   try {
+    const pool = db.$client;
+    if (pool && pool.unsafe) {
+      const r = await pool.unsafe(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
+      if (r && r.length > 0) return r[0];
+      return void 0;
+    }
     const result = await db.select().from(businesses).where(eq(businesses.userId, userId)).limit(1);
     return result.length > 0 ? result[0] : void 0;
   } catch (error) {
     console.error("[Database] Failed to get business by userId:", error);
-    return void 0;
+    return memoryStore.getBusinessByUserId(userId);
   }
 }
 async function getConnectedAccounts(businessId) {
