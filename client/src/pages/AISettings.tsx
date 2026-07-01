@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bot, Palette, Tags, Calendar, Save, Plus, X, Sparkles, Loader2 } from "lucide-react";
+import { Bot, Palette, Tags, Calendar, Save, Plus, X, Sparkles, Loader2, Video } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -19,6 +19,13 @@ const DEFAULT_CONTENT_TYPES = [
   { id: "social", name: "Social Media", desc: "Short-form posts for Instagram, Facebook, Reddit", enabled: true },
   { id: "video", name: "Video Scripts", desc: "30-45 second scripts for TikTok & YouTube Shorts", enabled: true },
   { id: "schema", name: "Schema Markup", desc: "JSON-LD structured data for AI engine optimization", enabled: false },
+];
+
+const VIDEO_PROVIDERS = [
+  { id: "none", name: "None", desc: "Generate video scripts only (no actual video generation)" },
+  { id: "a2e", name: "A2E AI", desc: "AI avatar videos, lip-sync, voice clone · video.a2e.ai" },
+  { id: "pictory", name: "Pictory", desc: "Script-to-video with stock visuals & voiceover" },
+  { id: "heygen", name: "HeyGen", desc: "AI presenter/avatar videos" },
 ];
 
 const DEFAULT_SCHEDULE = [
@@ -43,6 +50,7 @@ export default function AISettings() {
   const [autoApprove, setAutoApprove] = useState(false);
   const [contentTypes, setContentTypes] = useState(DEFAULT_CONTENT_TYPES);
   const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE);
+  const [videoProvider, setVideoProvider] = useState("none");
 
   // Load from business data
   useEffect(() => {
@@ -59,6 +67,9 @@ export default function AISettings() {
       }
       if (business.postingSchedule && Array.isArray(business.postingSchedule)) {
         setSchedule(business.postingSchedule as typeof DEFAULT_SCHEDULE);
+      }
+      if ((business as any).videoProvider) {
+        setVideoProvider((business as any).videoProvider);
       }
     }
   }, [business]);
@@ -85,6 +96,7 @@ export default function AISettings() {
       contentTypes,
       postingSchedule: schedule,
       autoApprove,
+      videoProvider,
     });
   };
 
@@ -157,6 +169,9 @@ export default function AISettings() {
             </TabsTrigger>
             <TabsTrigger value="schedule" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
               <Calendar className="w-4 h-4 mr-2" /> Schedule
+            </TabsTrigger>
+            <TabsTrigger value="video" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+              <Video className="w-4 h-4 mr-2" /> Video
             </TabsTrigger>
           </TabsList>
 
@@ -269,6 +284,68 @@ export default function AISettings() {
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Video Generation */}
+          <TabsContent value="video" className="space-y-4">
+            <Card className="bg-card border-border">
+              <CardContent className="p-5 space-y-4">
+                <div>
+                  <Label>Video Generation Provider</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Choose the AI video generation service for producing actual video files</p>
+                  <Select value={videoProvider} onValueChange={setVideoProvider}>
+                    <SelectTrigger className="mt-2"><SelectValue placeholder="Select a video provider..." /></SelectTrigger>
+                    <SelectContent>
+                      {VIDEO_PROVIDERS.map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          <div>
+                            <span className="font-medium">{p.name}</span>
+                            <span className="text-muted-foreground text-xs ml-2">{p.desc}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {videoProvider === "a2e" && (
+                  <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-green-400 font-semibold text-sm">A2E AI Connected</span>
+                    </div>
+                    <p className="text-xs text-green-400/70">Avatar videos, lip-sync, voice clone, face swap · video.a2e.ai</p>
+                    <p className="text-xs text-muted-foreground mt-2">API key configured on server. Users can generate avatar videos directly from scripts.</p>
+                  </div>
+                )}
+
+                {videoProvider === "pictory" && (
+                  <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-blue-400 font-semibold text-sm">Pictory</span>
+                    </div>
+                    <p className="text-xs text-blue-400/70">Script-to-video with AI visuals, voiceover & captions · docs.pictory.ai</p>
+                    <p className="text-xs text-muted-foreground mt-2">Set <code className="bg-secondary px-1 rounded">PICTORY_API_KEY</code> in server env vars to activate.</p>
+                  </div>
+                )}
+
+                {videoProvider === "heygen" && (
+                  <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-purple-400 font-semibold text-sm">HeyGen</span>
+                    </div>
+                    <p className="text-xs text-purple-400/70">AI presenter/avatar videos · developers.heygen.com</p>
+                    <p className="text-xs text-muted-foreground mt-2">Set <code className="bg-secondary px-1 rounded">HEYGEN_API_KEY</code> in server env vars to activate.</p>
+                  </div>
+                )}
+
+                {videoProvider === "none" && (
+                  <div className="p-4 rounded-lg bg-secondary/50 border border-border">
+                    <p className="text-sm text-muted-foreground">The app will generate <strong>video scripts</strong> for TikTok, YouTube Shorts, and Reels — but won't produce actual video files.</p>
+                    <p className="text-xs text-muted-foreground mt-2">Enable a video provider above to generate real MP4 videos from your scripts.</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

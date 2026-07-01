@@ -1,14 +1,13 @@
-# Render Blueprint — Node.js runtime
+# Render Blueprint — Docker deployment
 services:
   - type: web
     name: contentflow-ai-v2
     region: oregon
     plan: starter
+    dockerfilePath: ./Dockerfile
     repo: https://github.com/paisabrazilfl-cpu/contentflow-ai
     branch: main
     autoDeploy: true
-    buildCommand: npm ci
-    startCommand: node dist/index.js
     healthCheckPath: /
     envVars:
       - key: NODE_ENV
