@@ -106,7 +106,8 @@ export const appRouter = router({
         if (!db) return { error: "no_db_pool" };
         const pool = (db as any).$client || db;
 
-        // Create tables if they don't exist
+        // Drop and recreate users with all drizzle schema columns
+        try { await pool.unsafe(`DROP TABLE IF EXISTS users CASCADE`); } catch {}
         await pool.unsafe(`CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY,
           "openId" VARCHAR(64) NOT NULL UNIQUE,
@@ -114,6 +115,10 @@ export const appRouter = router({
           email VARCHAR(320),
           "loginMethod" VARCHAR(64),
           role VARCHAR(20) DEFAULT 'user' NOT NULL,
+          "stripeCustomerId" VARCHAR(128),
+          "subscriptionStatus" VARCHAR(32) DEFAULT 'trialing',
+          "planTier" VARCHAR(32) DEFAULT 'free',
+          "onboardingCompleted" BOOLEAN DEFAULT false,
           "createdAt" TIMESTAMP DEFAULT NOW() NOT NULL,
           "updatedAt" TIMESTAMP DEFAULT NOW() NOT NULL,
           "lastSignedIn" TIMESTAMP DEFAULT NOW() NOT NULL
