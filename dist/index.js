@@ -8,6 +8,18 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// shared/const.ts
+var COOKIE_NAME, ONE_YEAR_MS, AXIOS_TIMEOUT_MS, UNAUTHED_ERR_MSG, NOT_ADMIN_ERR_MSG;
+var init_const = __esm({
+  "shared/const.ts"() {
+    COOKIE_NAME = "app_session_id";
+    ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
+    AXIOS_TIMEOUT_MS = 3e4;
+    UNAUTHED_ERR_MSG = "Please login (10001)";
+    NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+  }
+});
+
 // drizzle/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -151,172 +163,164 @@ var init_schema = __esm({
   }
 });
 
-// server/_core/index.ts
-import "dotenv/config";
-import express2 from "express";
-import { createServer } from "http";
-import net from "net";
-import { createExpressMiddleware } from "@trpc/server/adapters/express";
+// server/_core/env.ts
+var ENV;
+var init_env = __esm({
+  "server/_core/env.ts"() {
+    ENV = {
+      // Core App
+      appId: process.env.VITE_APP_ID ?? "",
+      // Session signing key — must be set via JWT_SECRET env var in production
+      // Fallback only for local dev where env var may not be configured
+      // Hardcoded session signing key for production consistency
+      cookieSecret: "cf-prod-secret-do-not-share-32bytes!!",
+      // Boot diagnostic
+      bootAuthSecret: "cf-prod-secret-do-not-share-32bytes!!",
+      appUrl: process.env.VITE_APP_URL ?? "",
+      ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+      ownerName: process.env.OWNER_NAME ?? "",
+      isProduction: process.env.NODE_ENV === "production",
+      cronSecret: process.env.CRON_SECRET ?? "",
+      // Database
+      databaseUrl: process.env.DATABASE_URL ?? "",
+      // Manus/Forge LLM (legacy — replaced by direct provider keys)
+      forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
+      forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+      frontendForgeApiUrl: process.env.VITE_FRONTEND_FORGE_API_URL ?? "",
+      frontendForgeApiKey: process.env.VITE_FRONTEND_FORGE_API_KEY ?? "",
+      // OAuth (Manus Platform)
+      oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+      oauthPortalUrl: process.env.VITE_OAUTH_PORTAL_URL ?? "",
+      // AI Model Keys
+      openAiKey: process.env.OPENAI_API_KEY ?? "",
+      anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
+      nvidiaKey: process.env.NVIDIA_API_KEY ?? "",
+      kimiKey: process.env.KIMI_API_KEY ?? "",
+      geminiKey: process.env.GEMINI_API_KEY ?? "",
+      openRouterKey: process.env.OPENROUTER_API_KEY ?? "",
+      embeddingsKey: process.env.EMBEDDINGS_API_KEY ?? "",
+      // Stripe Billing
+      stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+      stripePriceStarter: process.env.STRIPE_PRICE_ID_STARTER ?? "",
+      stripePricePro: process.env.STRIPE_PRICE_ID_PRO ?? "",
+      stripePriceAgency: process.env.STRIPE_PRICE_ID_AGENCY ?? "",
+      // OAuth Providers (Platform Connections - direct)
+      googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      metaAppId: process.env.META_APP_ID ?? "",
+      metaAppSecret: process.env.META_APP_SECRET ?? "",
+      tiktokClientKey: process.env.TIKTOK_CLIENT_KEY ?? "",
+      tiktokClientSecret: process.env.TIKTOK_CLIENT_SECRET ?? "",
+      redditClientId: process.env.REDDIT_CLIENT_ID ?? "",
+      redditClientSecret: process.env.REDDIT_CLIENT_SECRET ?? "",
+      // Email
+      resendApiKey: process.env.RESEND_API_KEY ?? "",
+      fromEmail: process.env.FROM_EMAIL ?? process.env.RESEND_FROM ?? "",
+      resendFrom: process.env.RESEND_FROM ?? process.env.FROM_EMAIL ?? "",
+      // Video Generation (A2E)
+      a2eApiKey: process.env.A2E_API_KEY ?? "",
+      a2eApiUrl: process.env.A2E_API_URL ?? "",
+      // Storage / Infra
+      pineconeKey: process.env.PINECONE_API_KEY ?? "",
+      pineconeIndex: process.env.PINECONE_INDEX ?? "",
+      inngestKey: process.env.INNGEST_API_KEY ?? "",
+      inngestEventKey: process.env.INNGEST_EVENT_KEY ?? "",
+      langchainKey: process.env.LANGCHAIN_API_KEY ?? "",
+      discordBotToken: process.env.DISCORD_BOT_TOKEN ?? "",
+      composioKey: process.env.COMPOSIO_API_KEY ?? "",
+      // Web Scraping / Data
+      firecrawlKey: process.env.FIRECRAWL_API_KEY ?? "",
+      scrapingBeeKey: process.env.SCRAPINGBEE_API_KEY ?? "",
+      scrapflyKey: process.env.SCRAPFLY_API_KEY ?? "",
+      tavilyKey: process.env.TAVILY_API_KEY ?? "",
+      exaKey: process.env.EXA_API_KEY ?? "",
+      // Screenshots
+      screenshotOneAccess: process.env.SCREENSHOTONE_ACCESS_KEY ?? "",
+      screenshotOneSecret: process.env.SCREENSHOTONE_SECRET_KEY ?? "",
+      steelKey: process.env.STEEL_API_KEY ?? "",
+      // LLM Observability
+      heliconeKey: process.env.HELICONE_API_KEY ?? "",
+      // Code Execution (sandboxed)
+      e2bKey: process.env.E2B_API_KEY ?? ""
+    };
+  }
+});
 
-// shared/const.ts
-var COOKIE_NAME = "app_session_id";
-var ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
-var AXIOS_TIMEOUT_MS = 3e4;
-var UNAUTHED_ERR_MSG = "Please login (10001)";
-var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+// server/memory-store.ts
+var MemoryStore, memoryStore;
+var init_memory_store = __esm({
+  "server/memory-store.ts"() {
+    MemoryStore = class {
+      businesses = [];
+      apiKeys = [];
+      contentItems = [];
+      nextBusinessId = 1;
+      nextApiKeyId = 1;
+      nextContentId = 1;
+      createBusiness(data) {
+        const business = {
+          ...data,
+          id: this.nextBusinessId++,
+          createdAt: /* @__PURE__ */ new Date(),
+          updatedAt: /* @__PURE__ */ new Date()
+        };
+        this.businesses.push(business);
+        return business;
+      }
+      getBusinessByUserId(userId) {
+        return this.businesses.find((b) => b.userId === userId);
+      }
+      getBusinessById(id) {
+        return this.businesses.find((b) => b.id === id);
+      }
+      updateBusiness(id, data) {
+        const idx = this.businesses.findIndex((b) => b.id === id);
+        if (idx === -1) return void 0;
+        this.businesses[idx] = {
+          ...this.businesses[idx],
+          ...data,
+          updatedAt: /* @__PURE__ */ new Date()
+        };
+        return this.businesses[idx];
+      }
+      addApiKey(data) {
+        const apiKey = {
+          ...data,
+          id: this.nextApiKeyId++,
+          createdAt: /* @__PURE__ */ new Date()
+        };
+        this.apiKeys.push(apiKey);
+        return apiKey;
+      }
+      getApiKeys(businessId) {
+        return this.apiKeys.filter((k) => k.businessId === businessId);
+      }
+      deleteApiKey(id) {
+        this.apiKeys = this.apiKeys.filter((k) => k.id !== id);
+      }
+      addContentItem(data) {
+        const item = {
+          ...data,
+          id: this.nextContentId++,
+          createdAt: /* @__PURE__ */ new Date(),
+          updatedAt: /* @__PURE__ */ new Date()
+        };
+        this.contentItems.push(item);
+        return item;
+      }
+      getContentItems(businessId) {
+        return this.contentItems.filter((c) => c.businessId === businessId);
+      }
+    };
+    memoryStore = new MemoryStore();
+  }
+});
 
 // server/db.ts
-init_schema();
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import postgres from "postgres";
-
-// server/_core/env.ts
-var ENV = {
-  // Core App
-  appId: process.env.VITE_APP_ID ?? "",
-  // Session signing key — must be set via JWT_SECRET env var in production
-  // Fallback only for local dev where env var may not be configured
-  // Hardcoded session signing key for production consistency
-  cookieSecret: "cf-prod-secret-do-not-share-32bytes!!",
-  // Boot diagnostic
-  bootAuthSecret: "cf-prod-secret-do-not-share-32bytes!!",
-  appUrl: process.env.VITE_APP_URL ?? "",
-  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
-  ownerName: process.env.OWNER_NAME ?? "",
-  isProduction: process.env.NODE_ENV === "production",
-  cronSecret: process.env.CRON_SECRET ?? "",
-  // Database
-  databaseUrl: process.env.DATABASE_URL ?? "",
-  // Manus/Forge LLM (legacy — replaced by direct provider keys)
-  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
-  frontendForgeApiUrl: process.env.VITE_FRONTEND_FORGE_API_URL ?? "",
-  frontendForgeApiKey: process.env.VITE_FRONTEND_FORGE_API_KEY ?? "",
-  // OAuth (Manus Platform)
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-  oauthPortalUrl: process.env.VITE_OAUTH_PORTAL_URL ?? "",
-  // AI Model Keys
-  openAiKey: process.env.OPENAI_API_KEY ?? "",
-  anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
-  nvidiaKey: process.env.NVIDIA_API_KEY ?? "",
-  kimiKey: process.env.KIMI_API_KEY ?? "",
-  geminiKey: process.env.GEMINI_API_KEY ?? "",
-  openRouterKey: process.env.OPENROUTER_API_KEY ?? "",
-  embeddingsKey: process.env.EMBEDDINGS_API_KEY ?? "",
-  // Stripe Billing
-  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
-  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
-  stripePriceStarter: process.env.STRIPE_PRICE_ID_STARTER ?? "",
-  stripePricePro: process.env.STRIPE_PRICE_ID_PRO ?? "",
-  stripePriceAgency: process.env.STRIPE_PRICE_ID_AGENCY ?? "",
-  // OAuth Providers (Platform Connections - direct)
-  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
-  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-  metaAppId: process.env.META_APP_ID ?? "",
-  metaAppSecret: process.env.META_APP_SECRET ?? "",
-  tiktokClientKey: process.env.TIKTOK_CLIENT_KEY ?? "",
-  tiktokClientSecret: process.env.TIKTOK_CLIENT_SECRET ?? "",
-  redditClientId: process.env.REDDIT_CLIENT_ID ?? "",
-  redditClientSecret: process.env.REDDIT_CLIENT_SECRET ?? "",
-  // Email
-  resendApiKey: process.env.RESEND_API_KEY ?? "",
-  fromEmail: process.env.FROM_EMAIL ?? process.env.RESEND_FROM ?? "",
-  resendFrom: process.env.RESEND_FROM ?? process.env.FROM_EMAIL ?? "",
-  // Video Generation (A2E)
-  a2eApiKey: process.env.A2E_API_KEY ?? "",
-  a2eApiUrl: process.env.A2E_API_URL ?? "",
-  // Storage / Infra
-  pineconeKey: process.env.PINECONE_API_KEY ?? "",
-  pineconeIndex: process.env.PINECONE_INDEX ?? "",
-  inngestKey: process.env.INNGEST_API_KEY ?? "",
-  inngestEventKey: process.env.INNGEST_EVENT_KEY ?? "",
-  langchainKey: process.env.LANGCHAIN_API_KEY ?? "",
-  discordBotToken: process.env.DISCORD_BOT_TOKEN ?? "",
-  composioKey: process.env.COMPOSIO_API_KEY ?? "",
-  // Web Scraping / Data
-  firecrawlKey: process.env.FIRECRAWL_API_KEY ?? "",
-  scrapingBeeKey: process.env.SCRAPINGBEE_API_KEY ?? "",
-  scrapflyKey: process.env.SCRAPFLY_API_KEY ?? "",
-  tavilyKey: process.env.TAVILY_API_KEY ?? "",
-  exaKey: process.env.EXA_API_KEY ?? "",
-  // Screenshots
-  screenshotOneAccess: process.env.SCREENSHOTONE_ACCESS_KEY ?? "",
-  screenshotOneSecret: process.env.SCREENSHOTONE_SECRET_KEY ?? "",
-  steelKey: process.env.STEEL_API_KEY ?? "",
-  // LLM Observability
-  heliconeKey: process.env.HELICONE_API_KEY ?? "",
-  // Code Execution (sandboxed)
-  e2bKey: process.env.E2B_API_KEY ?? ""
-};
-
-// server/memory-store.ts
-var MemoryStore = class {
-  businesses = [];
-  apiKeys = [];
-  contentItems = [];
-  nextBusinessId = 1;
-  nextApiKeyId = 1;
-  nextContentId = 1;
-  createBusiness(data) {
-    const business = {
-      ...data,
-      id: this.nextBusinessId++,
-      createdAt: /* @__PURE__ */ new Date(),
-      updatedAt: /* @__PURE__ */ new Date()
-    };
-    this.businesses.push(business);
-    return business;
-  }
-  getBusinessByUserId(userId) {
-    return this.businesses.find((b) => b.userId === userId);
-  }
-  getBusinessById(id) {
-    return this.businesses.find((b) => b.id === id);
-  }
-  updateBusiness(id, data) {
-    const idx = this.businesses.findIndex((b) => b.id === id);
-    if (idx === -1) return void 0;
-    this.businesses[idx] = {
-      ...this.businesses[idx],
-      ...data,
-      updatedAt: /* @__PURE__ */ new Date()
-    };
-    return this.businesses[idx];
-  }
-  addApiKey(data) {
-    const apiKey = {
-      ...data,
-      id: this.nextApiKeyId++,
-      createdAt: /* @__PURE__ */ new Date()
-    };
-    this.apiKeys.push(apiKey);
-    return apiKey;
-  }
-  getApiKeys(businessId) {
-    return this.apiKeys.filter((k) => k.businessId === businessId);
-  }
-  deleteApiKey(id) {
-    this.apiKeys = this.apiKeys.filter((k) => k.id !== id);
-  }
-  addContentItem(data) {
-    const item = {
-      ...data,
-      id: this.nextContentId++,
-      createdAt: /* @__PURE__ */ new Date(),
-      updatedAt: /* @__PURE__ */ new Date()
-    };
-    this.contentItems.push(item);
-    return item;
-  }
-  getContentItems(businessId) {
-    return this.contentItems.filter((c) => c.businessId === businessId);
-  }
-};
-var memoryStore = new MemoryStore();
-
-// server/db.ts
-var _db = null;
 async function getDb() {
   if (!_db && ENV.databaseUrl) {
     try {
@@ -807,6 +811,323 @@ async function createBusiness(data) {
     throw error;
   }
 }
+var _db;
+var init_db = __esm({
+  "server/db.ts"() {
+    init_schema();
+    init_env();
+    init_memory_store();
+    _db = null;
+  }
+});
+
+// shared/_core/errors.ts
+var HttpError, ForbiddenError;
+var init_errors = __esm({
+  "shared/_core/errors.ts"() {
+    HttpError = class extends Error {
+      constructor(statusCode, message) {
+        super(message);
+        this.statusCode = statusCode;
+        this.name = "HttpError";
+      }
+    };
+    ForbiddenError = (msg) => new HttpError(403, msg);
+  }
+});
+
+// server/_core/sdk.ts
+var sdk_exports = {};
+__export(sdk_exports, {
+  sdk: () => sdk
+});
+import axios from "axios";
+import { parse as parseCookieHeader } from "cookie";
+import { SignJWT, jwtVerify } from "jose";
+function buildCronUser(userInfo) {
+  const now = /* @__PURE__ */ new Date();
+  return {
+    id: -1,
+    openId: userInfo.openId,
+    name: userInfo.name || "Manus Scheduled Task",
+    email: null,
+    loginMethod: null,
+    role: "user",
+    createdAt: now,
+    updatedAt: now,
+    lastSignedIn: now,
+    taskUid: userInfo.taskUid ?? void 0,
+    isCron: true
+  };
+}
+var isNonEmptyString, EXCHANGE_TOKEN_PATH, GET_USER_INFO_PATH, GET_USER_INFO_WITH_JWT_PATH, OAuthService, createOAuthHttpClient, SDKServer, CRON_OPEN_ID_PREFIX, sdk;
+var init_sdk = __esm({
+  "server/_core/sdk.ts"() {
+    init_const();
+    init_errors();
+    init_db();
+    init_env();
+    isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
+    EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
+    GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
+    GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
+    OAuthService = class {
+      constructor(client) {
+        this.client = client;
+        console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
+        if (!ENV.oAuthServerUrl) {
+          console.error(
+            "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
+          );
+        }
+      }
+      decodeState(state) {
+        const redirectUri = atob(state);
+        return redirectUri;
+      }
+      async getTokenByCode(code, state) {
+        const payload = {
+          clientId: ENV.appId,
+          grantType: "authorization_code",
+          code,
+          redirectUri: this.decodeState(state)
+        };
+        const { data } = await this.client.post(
+          EXCHANGE_TOKEN_PATH,
+          payload
+        );
+        return data;
+      }
+      async getUserInfoByToken(token) {
+        const { data } = await this.client.post(
+          GET_USER_INFO_PATH,
+          {
+            accessToken: token.accessToken
+          }
+        );
+        return data;
+      }
+    };
+    createOAuthHttpClient = () => axios.create({
+      baseURL: ENV.oAuthServerUrl,
+      timeout: AXIOS_TIMEOUT_MS
+    });
+    SDKServer = class {
+      client;
+      oauthService;
+      constructor(client = createOAuthHttpClient()) {
+        this.client = client;
+        this.oauthService = new OAuthService(this.client);
+      }
+      deriveLoginMethod(platforms, fallback) {
+        if (fallback && fallback.length > 0) return fallback;
+        if (!Array.isArray(platforms) || platforms.length === 0) return null;
+        const set = new Set(
+          platforms.filter((p) => typeof p === "string")
+        );
+        if (set.has("REGISTERED_PLATFORM_EMAIL")) return "email";
+        if (set.has("REGISTERED_PLATFORM_GOOGLE")) return "google";
+        if (set.has("REGISTERED_PLATFORM_APPLE")) return "apple";
+        if (set.has("REGISTERED_PLATFORM_MICROSOFT") || set.has("REGISTERED_PLATFORM_AZURE"))
+          return "microsoft";
+        if (set.has("REGISTERED_PLATFORM_GITHUB")) return "github";
+        const first = Array.from(set)[0];
+        return first ? first.toLowerCase() : null;
+      }
+      /**
+       * Exchange OAuth authorization code for access token
+       * @example
+       * const tokenResponse = await sdk.exchangeCodeForToken(code, state);
+       */
+      async exchangeCodeForToken(code, state) {
+        return this.oauthService.getTokenByCode(code, state);
+      }
+      /**
+       * Get user information using access token
+       * @example
+       * const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
+       */
+      async getUserInfo(accessToken) {
+        const data = await this.oauthService.getUserInfoByToken({
+          accessToken
+        });
+        const loginMethod = this.deriveLoginMethod(
+          data?.platforms,
+          data?.platform ?? data.platform ?? null
+        );
+        return {
+          ...data,
+          platform: loginMethod,
+          loginMethod
+        };
+      }
+      parseCookies(cookieHeader) {
+        if (!cookieHeader) {
+          return /* @__PURE__ */ new Map();
+        }
+        const parsed = parseCookieHeader(cookieHeader);
+        return new Map(Object.entries(parsed));
+      }
+      getSessionSecret() {
+        const secret = ENV.cookieSecret;
+        if (process.env.DEBUG_AUTH === "1") {
+          console.log(`[Auth] getSessionSecret returns: "${secret.substring(0, 10)}..." (length=${secret.length})`);
+        }
+        return new TextEncoder().encode(secret);
+      }
+      /**
+       * Create a session token for a Manus user openId
+       * @example
+       * const sessionToken = await sdk.createSessionToken(userInfo.openId);
+       */
+      async createSessionToken(openId, options = {}) {
+        return this.signSession(
+          {
+            openId,
+            appId: ENV.appId,
+            name: options.name || ""
+          },
+          options
+        );
+      }
+      async signSession(payload, options = {}) {
+        const issuedAt = Date.now();
+        const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
+        const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1e3);
+        const secretKey = this.getSessionSecret();
+        return new SignJWT({
+          openId: payload.openId,
+          appId: payload.appId,
+          name: payload.name
+        }).setProtectedHeader({ alg: "HS256", typ: "JWT" }).setExpirationTime(expirationSeconds).sign(secretKey);
+      }
+      async verifySession(cookieValue) {
+        if (!cookieValue) {
+          console.warn("[Auth] Missing session cookie");
+          return null;
+        }
+        const cookiePrefix = cookieValue.substring(0, 30);
+        const secretKey = this.getSessionSecret();
+        const secretPrefix = (process.env.JWT_SECRET || "cf-fallback").substring(0, 10);
+        console.log(`[Auth] verifySession: cookie=${cookiePrefix}..., secret_prefix=${secretPrefix}, cookie_len=${cookieValue.length}`);
+        try {
+          const { payload } = await jwtVerify(cookieValue, secretKey, {
+            algorithms: ["HS256"]
+          });
+          const { openId, appId, name } = payload;
+          if (!isNonEmptyString(openId)) {
+            console.warn("[Auth] Session payload missing openId");
+            return null;
+          }
+          const sessionAppId = appId ?? "";
+          const sessionName = name ?? "";
+          return {
+            openId,
+            appId: sessionAppId,
+            name: sessionName
+          };
+        } catch (error) {
+          console.warn("[Auth] Session verification failed", String(error));
+          return null;
+        }
+      }
+      async getUserInfoWithJwt(jwtToken) {
+        const payload = {
+          jwtToken,
+          projectId: ENV.appId
+        };
+        const { data } = await this.client.post(
+          GET_USER_INFO_WITH_JWT_PATH,
+          payload
+        );
+        const loginMethod = this.deriveLoginMethod(
+          data?.platforms,
+          data?.platform ?? data.platform ?? null
+        );
+        return {
+          ...data,
+          platform: loginMethod,
+          loginMethod
+        };
+      }
+      async authenticateRequest(req) {
+        const cookies = this.parseCookies(req.headers.cookie);
+        const sessionCookie = cookies.get(COOKIE_NAME);
+        const session = await this.verifySession(sessionCookie);
+        if (!session) {
+          throw ForbiddenError("Invalid session cookie");
+        }
+        if (session.openId.startsWith(CRON_OPEN_ID_PREFIX)) {
+          const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
+          const taskUid = userInfo.taskUid ?? null;
+          if (!taskUid) {
+            throw ForbiddenError("Cron session missing task_uid");
+          }
+          return buildCronUser(userInfo);
+        }
+        const sessionUserId = session.openId;
+        const signedInAt = /* @__PURE__ */ new Date();
+        let user = await getUserByOpenId(sessionUserId);
+        if (!user) {
+          try {
+            const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
+            await upsertUser({
+              openId: userInfo.openId,
+              name: userInfo.name || null,
+              email: userInfo.email ?? null,
+              loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
+              lastSignedIn: signedInAt
+            });
+            user = await getUserByOpenId(userInfo.openId);
+          } catch (error) {
+            console.warn("[Auth] OAuth sync skipped, using JWT payload:", String(error));
+          }
+        }
+        if (!user) {
+          const upserted = await upsertUser({
+            openId: sessionUserId,
+            name: session.name || null,
+            email: null,
+            loginMethod: "credentials",
+            lastSignedIn: signedInAt
+          });
+          user = await getUserByOpenId(sessionUserId);
+          if (!user) {
+            return {
+              id: 1,
+              openId: sessionUserId,
+              name: session.name || "User",
+              email: null,
+              loginMethod: "credentials",
+              role: "admin",
+              createdAt: signedInAt,
+              updatedAt: signedInAt,
+              lastSignedIn: signedInAt
+            };
+          }
+        }
+        await upsertUser({
+          openId: user.openId,
+          lastSignedIn: signedInAt
+        });
+        return user;
+      }
+    };
+    CRON_OPEN_ID_PREFIX = "cron_";
+    sdk = new SDKServer();
+  }
+});
+
+// server/_core/index.ts
+import "dotenv/config";
+import express2 from "express";
+import { createServer } from "http";
+import net from "net";
+import { createExpressMiddleware } from "@trpc/server/adapters/express";
+
+// server/_core/oauth.ts
+init_const();
+init_db();
 
 // server/_core/cookies.ts
 function isSecureRequest(req) {
@@ -825,286 +1146,11 @@ function getSessionCookieOptions(req) {
   };
 }
 
-// shared/_core/errors.ts
-var HttpError = class extends Error {
-  constructor(statusCode, message) {
-    super(message);
-    this.statusCode = statusCode;
-    this.name = "HttpError";
-  }
-};
-var ForbiddenError = (msg) => new HttpError(403, msg);
-
-// server/_core/sdk.ts
-import axios from "axios";
-import { parse as parseCookieHeader } from "cookie";
-import { SignJWT, jwtVerify } from "jose";
-var isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
-var EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
-var GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
-var GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
-var OAuthService = class {
-  constructor(client) {
-    this.client = client;
-    console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
-    if (!ENV.oAuthServerUrl) {
-      console.error(
-        "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
-      );
-    }
-  }
-  decodeState(state) {
-    const redirectUri = atob(state);
-    return redirectUri;
-  }
-  async getTokenByCode(code, state) {
-    const payload = {
-      clientId: ENV.appId,
-      grantType: "authorization_code",
-      code,
-      redirectUri: this.decodeState(state)
-    };
-    const { data } = await this.client.post(
-      EXCHANGE_TOKEN_PATH,
-      payload
-    );
-    return data;
-  }
-  async getUserInfoByToken(token) {
-    const { data } = await this.client.post(
-      GET_USER_INFO_PATH,
-      {
-        accessToken: token.accessToken
-      }
-    );
-    return data;
-  }
-};
-var createOAuthHttpClient = () => axios.create({
-  baseURL: ENV.oAuthServerUrl,
-  timeout: AXIOS_TIMEOUT_MS
-});
-var SDKServer = class {
-  client;
-  oauthService;
-  constructor(client = createOAuthHttpClient()) {
-    this.client = client;
-    this.oauthService = new OAuthService(this.client);
-  }
-  deriveLoginMethod(platforms, fallback) {
-    if (fallback && fallback.length > 0) return fallback;
-    if (!Array.isArray(platforms) || platforms.length === 0) return null;
-    const set = new Set(
-      platforms.filter((p) => typeof p === "string")
-    );
-    if (set.has("REGISTERED_PLATFORM_EMAIL")) return "email";
-    if (set.has("REGISTERED_PLATFORM_GOOGLE")) return "google";
-    if (set.has("REGISTERED_PLATFORM_APPLE")) return "apple";
-    if (set.has("REGISTERED_PLATFORM_MICROSOFT") || set.has("REGISTERED_PLATFORM_AZURE"))
-      return "microsoft";
-    if (set.has("REGISTERED_PLATFORM_GITHUB")) return "github";
-    const first = Array.from(set)[0];
-    return first ? first.toLowerCase() : null;
-  }
-  /**
-   * Exchange OAuth authorization code for access token
-   * @example
-   * const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-   */
-  async exchangeCodeForToken(code, state) {
-    return this.oauthService.getTokenByCode(code, state);
-  }
-  /**
-   * Get user information using access token
-   * @example
-   * const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-   */
-  async getUserInfo(accessToken) {
-    const data = await this.oauthService.getUserInfoByToken({
-      accessToken
-    });
-    const loginMethod = this.deriveLoginMethod(
-      data?.platforms,
-      data?.platform ?? data.platform ?? null
-    );
-    return {
-      ...data,
-      platform: loginMethod,
-      loginMethod
-    };
-  }
-  parseCookies(cookieHeader) {
-    if (!cookieHeader) {
-      return /* @__PURE__ */ new Map();
-    }
-    const parsed = parseCookieHeader(cookieHeader);
-    return new Map(Object.entries(parsed));
-  }
-  getSessionSecret() {
-    const secret = ENV.cookieSecret;
-    if (process.env.DEBUG_AUTH === "1") {
-      console.log(`[Auth] getSessionSecret returns: "${secret.substring(0, 10)}..." (length=${secret.length})`);
-    }
-    return new TextEncoder().encode(secret);
-  }
-  /**
-   * Create a session token for a Manus user openId
-   * @example
-   * const sessionToken = await sdk.createSessionToken(userInfo.openId);
-   */
-  async createSessionToken(openId, options = {}) {
-    return this.signSession(
-      {
-        openId,
-        appId: ENV.appId,
-        name: options.name || ""
-      },
-      options
-    );
-  }
-  async signSession(payload, options = {}) {
-    const issuedAt = Date.now();
-    const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
-    const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1e3);
-    const secretKey = this.getSessionSecret();
-    return new SignJWT({
-      openId: payload.openId,
-      appId: payload.appId,
-      name: payload.name
-    }).setProtectedHeader({ alg: "HS256", typ: "JWT" }).setExpirationTime(expirationSeconds).sign(secretKey);
-  }
-  async verifySession(cookieValue) {
-    if (!cookieValue) {
-      console.warn("[Auth] Missing session cookie");
-      return null;
-    }
-    const cookiePrefix = cookieValue.substring(0, 30);
-    const secretKey = this.getSessionSecret();
-    const secretPrefix = (process.env.JWT_SECRET || "cf-fallback").substring(0, 10);
-    console.log(`[Auth] verifySession: cookie=${cookiePrefix}..., secret_prefix=${secretPrefix}, cookie_len=${cookieValue.length}`);
-    try {
-      const { payload } = await jwtVerify(cookieValue, secretKey, {
-        algorithms: ["HS256"]
-      });
-      const { openId, appId, name } = payload;
-      if (!isNonEmptyString(openId)) {
-        console.warn("[Auth] Session payload missing openId");
-        return null;
-      }
-      const sessionAppId = appId ?? "";
-      const sessionName = name ?? "";
-      return {
-        openId,
-        appId: sessionAppId,
-        name: sessionName
-      };
-    } catch (error) {
-      console.warn("[Auth] Session verification failed", String(error));
-      return null;
-    }
-  }
-  async getUserInfoWithJwt(jwtToken) {
-    const payload = {
-      jwtToken,
-      projectId: ENV.appId
-    };
-    const { data } = await this.client.post(
-      GET_USER_INFO_WITH_JWT_PATH,
-      payload
-    );
-    const loginMethod = this.deriveLoginMethod(
-      data?.platforms,
-      data?.platform ?? data.platform ?? null
-    );
-    return {
-      ...data,
-      platform: loginMethod,
-      loginMethod
-    };
-  }
-  async authenticateRequest(req) {
-    const cookies = this.parseCookies(req.headers.cookie);
-    const sessionCookie = cookies.get(COOKIE_NAME);
-    const session = await this.verifySession(sessionCookie);
-    if (!session) {
-      throw ForbiddenError("Invalid session cookie");
-    }
-    if (session.openId.startsWith(CRON_OPEN_ID_PREFIX)) {
-      const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
-      const taskUid = userInfo.taskUid ?? null;
-      if (!taskUid) {
-        throw ForbiddenError("Cron session missing task_uid");
-      }
-      return buildCronUser(userInfo);
-    }
-    const sessionUserId = session.openId;
-    const signedInAt = /* @__PURE__ */ new Date();
-    let user = await getUserByOpenId(sessionUserId);
-    if (!user) {
-      try {
-        const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
-        await upsertUser({
-          openId: userInfo.openId,
-          name: userInfo.name || null,
-          email: userInfo.email ?? null,
-          loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-          lastSignedIn: signedInAt
-        });
-        user = await getUserByOpenId(userInfo.openId);
-      } catch (error) {
-        console.warn("[Auth] OAuth sync skipped, using JWT payload:", String(error));
-      }
-    }
-    if (!user) {
-      const upserted = await upsertUser({
-        openId: sessionUserId,
-        name: session.name || null,
-        email: null,
-        loginMethod: "credentials",
-        lastSignedIn: signedInAt
-      });
-      user = await getUserByOpenId(sessionUserId);
-      if (!user) {
-        return {
-          id: 1,
-          openId: sessionUserId,
-          name: session.name || "User",
-          email: null,
-          loginMethod: "credentials",
-          role: "admin",
-          createdAt: signedInAt,
-          updatedAt: signedInAt,
-          lastSignedIn: signedInAt
-        };
-      }
-    }
-    await upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt
-    });
-    return user;
-  }
-};
-var CRON_OPEN_ID_PREFIX = "cron_";
-function buildCronUser(userInfo) {
-  const now = /* @__PURE__ */ new Date();
-  return {
-    id: -1,
-    openId: userInfo.openId,
-    name: userInfo.name || "Manus Scheduled Task",
-    email: null,
-    loginMethod: null,
-    role: "user",
-    createdAt: now,
-    updatedAt: now,
-    lastSignedIn: now,
-    taskUid: userInfo.taskUid ?? void 0,
-    isCron: true
-  };
-}
-var sdk = new SDKServer();
+// server/_core/oauth.ts
+init_sdk();
 
 // server/google-oauth.ts
+init_env();
 var GOOGLE_CLIENT_ID = ENV.googleClientId;
 var GOOGLE_CLIENT_SECRET = ENV.googleClientSecret;
 var GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth";
@@ -1258,7 +1304,10 @@ function registerOAuthRoutes(app) {
 }
 
 // server/stripe-routes.ts
+init_db();
 init_schema();
+init_sdk();
+init_env();
 import { eq as eq2 } from "drizzle-orm";
 var STRIPE_SECRET_KEY = ENV.stripeSecretKey;
 var STRIPE_WEBHOOK_SECRET = ENV.stripeWebhookSecret;
@@ -1465,10 +1514,13 @@ function registerStripeRoutes(app) {
 }
 
 // server/scheduling-engine.ts
+init_db();
 init_schema();
 import { eq as eq4, and as and2, sql } from "drizzle-orm";
 
 // server/_core/llm.ts
+init_env();
+init_db();
 async function pickProvider() {
   if (ENV.openAiKey) {
     return { baseUrl: "https://api.openai.com/v1", apiKey: ENV.openAiKey, model: "gpt-4o-mini" };
@@ -1702,6 +1754,7 @@ RULES:
 }
 
 // server/publishing-worker.ts
+init_db();
 init_schema();
 import { eq as eq3, and, lte } from "drizzle-orm";
 var platformPublishers = {
@@ -2006,6 +2059,7 @@ async function runPublishingWorker(businessId) {
 }
 
 // server/scheduling-engine.ts
+init_env();
 async function runScheduledPublishing() {
   const db = await getDb();
   if (!db) return { businessesProcessed: 0, contentGenerated: 0, contentPublished: 0, errors: ["DB unavailable"] };
@@ -2094,6 +2148,7 @@ function registerCronRoutes(app) {
 }
 
 // server/_core/storageProxy.ts
+init_env();
 function registerStorageProxy(app) {
   app.get("/manus-storage/*", async (req, res) => {
     const key = req.params[0];
@@ -2134,10 +2189,14 @@ function registerStorageProxy(app) {
   });
 }
 
+// server/routers.ts
+init_const();
+
 // server/_core/systemRouter.ts
 import { z } from "zod";
 
 // server/_core/notification.ts
+init_env();
 import { TRPCError } from "@trpc/server";
 var TITLE_MAX_LENGTH = 1200;
 var CONTENT_MAX_LENGTH = 2e4;
@@ -2220,6 +2279,7 @@ async function notifyOwner(payload) {
 }
 
 // server/_core/trpc.ts
+init_const();
 import { initTRPC, TRPCError as TRPCError2 } from "@trpc/server";
 import superjson from "superjson";
 var t = initTRPC.context().create({
@@ -2278,6 +2338,9 @@ var systemRouter = router({
 });
 
 // server/routers.ts
+init_db();
+init_sdk();
+init_env();
 import { TRPCError as TRPCError3 } from "@trpc/server";
 import { z as z2 } from "zod";
 
@@ -2354,6 +2417,7 @@ Generate a comprehensive analysis including:
 }
 
 // server/content-quality.ts
+init_db();
 init_schema();
 import { eq as eq5, desc } from "drizzle-orm";
 async function scoreContent(content, title, platform, brandVoice, targetAudience, recentTitles) {
@@ -2502,6 +2566,7 @@ Score each dimension and provide an overall AI visibility score 0-100.`
 }
 
 // server/email-system.ts
+init_env();
 var RESEND_API_KEY = ENV.resendApiKey;
 var FROM_EMAIL = ENV.fromEmail || "notifications@contentflow.ai";
 async function sendEmail(payload) {
@@ -2559,6 +2624,7 @@ async function sendWelcomeEmail(email, businessName) {
 }
 
 // server/plan-limits.ts
+init_db();
 init_schema();
 import { eq as eq6, and as and3 } from "drizzle-orm";
 var PLAN_LIMITS = {
@@ -2713,6 +2779,7 @@ function canUseContentType(contentType, planTier) {
 }
 
 // server/composio.ts
+init_env();
 var COMPOSIO_BASE = "https://backend.composio.dev/api/v1";
 var PLATFORM_TO_TOOLKIT = {
   google: "googlebusiness",
@@ -2850,13 +2917,26 @@ var appRouter = router({
       const cookies = ctx.req.headers.cookie || "";
       const envCookieSecret = ENV.cookieSecret || "";
       const jwtSecretEnv = process.env.JWT_SECRET || "";
+      const appSessionMatch = cookies.match(/app_session_id=([^;]+)/);
+      const parsedCookie = appSessionMatch ? appSessionMatch[1] : null;
+      let verifyResult = "not_attempted";
+      try {
+        const { sdk: sdk2 } = await Promise.resolve().then(() => (init_sdk(), sdk_exports));
+        const result = await sdk2.verifySession(parsedCookie || void 0);
+        verifyResult = result ? "verified: " + result.openId : "returned_null";
+      } catch (e) {
+        verifyResult = "error: " + (e.message || String(e));
+      }
       return {
         cookieHeader: cookies.substring(0, 200),
+        cookieLength: cookies.length,
+        parsedAppSessionLength: parsedCookie ? parsedCookie.length : 0,
+        parsedAppSessionPrefix: parsedCookie ? parsedCookie.substring(0, 30) : "none",
         envCookieSecretLength: envCookieSecret.length,
         envCookieSecretPrefix: envCookieSecret.substring(0, 10),
         envCookieSecretSuffix: envCookieSecret.substring(envCookieSecret.length - 5),
         jwtSecretEnvSet: jwtSecretEnv.length > 0,
-        jwtSecretEnvPrefix: jwtSecretEnv.substring(0, 10)
+        verifyResult
       };
     }),
     me: publicProcedure.query((opts) => opts.ctx.user),
@@ -3278,6 +3358,7 @@ var appRouter = router({
 });
 
 // server/_core/context.ts
+init_sdk();
 async function createContext(opts) {
   let user = null;
   try {
@@ -3499,6 +3580,7 @@ function serveStatic(app) {
 }
 
 // server/_core/index.ts
+init_env();
 function isPortAvailable(port) {
   return new Promise((resolve) => {
     const server = net.createServer();

@@ -24,13 +24,28 @@ export const appRouter = router({
       const cookies = ctx.req.headers.cookie || "";
       const envCookieSecret = ENV.cookieSecret || "";
       const jwtSecretEnv = process.env.JWT_SECRET || "";
+      // Try parsing the cookie manually
+      const appSessionMatch = cookies.match(/app_session_id=([^;]+)/);
+      const parsedCookie = appSessionMatch ? appSessionMatch[1] : null;
+      // Try to verify it directly
+      let verifyResult = "not_attempted";
+      try {
+        const { sdk } = await import("./_core/sdk");
+        const result = await sdk.verifySession(parsedCookie || undefined);
+        verifyResult = result ? "verified: " + result.openId : "returned_null";
+      } catch (e: any) {
+        verifyResult = "error: " + (e.message || String(e));
+      }
       return {
         cookieHeader: cookies.substring(0, 200),
+        cookieLength: cookies.length,
+        parsedAppSessionLength: parsedCookie ? parsedCookie.length : 0,
+        parsedAppSessionPrefix: parsedCookie ? parsedCookie.substring(0, 30) : "none",
         envCookieSecretLength: envCookieSecret.length,
         envCookieSecretPrefix: envCookieSecret.substring(0, 10),
         envCookieSecretSuffix: envCookieSecret.substring(envCookieSecret.length - 5),
         jwtSecretEnvSet: jwtSecretEnv.length > 0,
-        jwtSecretEnvPrefix: jwtSecretEnv.substring(0, 10),
+        verifyResult,
       };
     }),
     me: publicProcedure.query(opts => opts.ctx.user),
