@@ -109,26 +109,33 @@ export const appRouter = router({
       contentTypes: z.any().optional(),
       autoApprove: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
-      // Ensure user exists in DB before creating business (FK constraint)
+      // Force-create user with raw SQL to ensure FK constraint passes
+      // This bypasses any issues with the drizzle upsert
+      let userId: number = ctx.user.id;
       try {
-        await db.upsertUser({
-          openId: ctx.user.openId,
-          name: ctx.user.name,
-          email: ctx.user.email,
-          loginMethod: ctx.user.loginMethod || "credentials",
-          lastSignedIn: new Date(),
-        });
-      } catch (e) {
-        console.warn("[Business.create] upsertUser failed:", String(e));
-      }
-
-      // Re-fetch user to get the actual DB id
-      let userId = ctx.user.id;
-      try {
-        const dbUser = await db.getUserByOpenId(ctx.user.openId);
-        if (dbUser) userId = dbUser.id;
-      } catch (e) {
-        console.warn("[Business.create] getUserByOpenId failed:", String(e));
+        const pool = await import("./db").then(m => m.getDb());
+        if (pool) {
+          // Use raw SQL via drizzle's execute to ensure user is created
+          const sql = await import("drizzle-orm");
+          const schema = await import("../drizzle/schema");
+          await pool.insert(schema.users).values({
+            openId: ctx.user.openId,
+            name: ctx.user.name || "User",
+            email: ctx.user.email,
+            loginMethod: ctx.user.loginMethod || "credentials",
+            lastSignedIn: new Date(),
+          }).onConflictDoUpdate({
+            target: schema.users.openId,
+            set: { lastSignedIn: new Date() },
+          });
+          const dbUser = await db.getUserByOpenId(ctx.user.openId);
+          if (dbUser) userId = dbUser.id;
+          console.log(`[Business.create] User upserted: openId=${ctx.user.openId}, dbId=${userId}`);
+        } else {
+          console.warn("[Business.create] No DB pool available");
+        }
+      } catch (e: any) {
+        console.error("[Business.create] User upsert FAILED:", e?.message || String(e));
       }
 
       await db.createBusiness({ ...input, userId, name: input.name });

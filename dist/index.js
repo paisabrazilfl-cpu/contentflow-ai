@@ -318,6 +318,36 @@ var init_memory_store = __esm({
 });
 
 // server/db.ts
+var db_exports = {};
+__export(db_exports, {
+  addConnectedAccount: () => addConnectedAccount,
+  createBusiness: () => createBusiness,
+  createContentItem: () => createContentItem,
+  deleteAllBusinessData: () => deleteAllBusinessData,
+  deleteUser: () => deleteUser,
+  getActivityFeed: () => getActivityFeed,
+  getAllBusinesses: () => getAllBusinesses,
+  getAllUsers: () => getAllUsers,
+  getAnalytics: () => getAnalytics,
+  getApiKeys: () => getApiKeys,
+  getBusinessByUserId: () => getBusinessByUserId,
+  getConnectedAccounts: () => getConnectedAccounts,
+  getContentQueue: () => getContentQueue,
+  getContentQueueWithStatus: () => getContentQueueWithStatus,
+  getDb: () => getDb,
+  getInvoices: () => getInvoices,
+  getLatestVisibilityScore: () => getLatestVisibilityScore,
+  getROISummary: () => getROISummary,
+  getTeamMembers: () => getTeamMembers,
+  getUserByOpenId: () => getUserByOpenId,
+  logActivity: () => logActivity,
+  logAnalytic: () => logAnalytic,
+  removeConnectedAccount: () => removeConnectedAccount,
+  saveApiKey: () => saveApiKey,
+  updateBusiness: () => updateBusiness,
+  updateContentStatus: () => updateContentStatus,
+  upsertUser: () => upsertUser
+});
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import postgres from "postgres";
@@ -768,6 +798,25 @@ async function removeConnectedAccount(accountId, businessId) {
   } catch (error) {
     console.error("[Database] Failed to remove connected account:", error);
     throw error;
+  }
+}
+async function getContentQueueWithStatus(businessId, status) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get content queue: database not available");
+    return [];
+  }
+  try {
+    const { contentQueue: contentQueue2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+    if (status) {
+      return await db.select().from(contentQueue2).where(
+        eq(contentQueue2.businessId, businessId)
+      );
+    }
+    return await db.select().from(contentQueue2).where(eq(contentQueue2.businessId, businessId));
+  } catch (error) {
+    console.error("[Database] Failed to get content queue:", error);
+    return [];
   }
 }
 async function createBusiness(data) {
@@ -3009,23 +3058,30 @@ var appRouter = router({
       contentTypes: z2.any().optional(),
       autoApprove: z2.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
-      try {
-        await upsertUser({
-          openId: ctx.user.openId,
-          name: ctx.user.name,
-          email: ctx.user.email,
-          loginMethod: ctx.user.loginMethod || "credentials",
-          lastSignedIn: /* @__PURE__ */ new Date()
-        });
-      } catch (e) {
-        console.warn("[Business.create] upsertUser failed:", String(e));
-      }
       let userId = ctx.user.id;
       try {
-        const dbUser = await getUserByOpenId(ctx.user.openId);
-        if (dbUser) userId = dbUser.id;
+        const pool = await Promise.resolve().then(() => (init_db(), db_exports)).then((m) => m.getDb());
+        if (pool) {
+          const sql2 = await import("drizzle-orm");
+          const schema = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          await pool.insert(schema.users).values({
+            openId: ctx.user.openId,
+            name: ctx.user.name || "User",
+            email: ctx.user.email,
+            loginMethod: ctx.user.loginMethod || "credentials",
+            lastSignedIn: /* @__PURE__ */ new Date()
+          }).onConflictDoUpdate({
+            target: schema.users.openId,
+            set: { lastSignedIn: /* @__PURE__ */ new Date() }
+          });
+          const dbUser = await getUserByOpenId(ctx.user.openId);
+          if (dbUser) userId = dbUser.id;
+          console.log(`[Business.create] User upserted: openId=${ctx.user.openId}, dbId=${userId}`);
+        } else {
+          console.warn("[Business.create] No DB pool available");
+        }
       } catch (e) {
-        console.warn("[Business.create] getUserByOpenId failed:", String(e));
+        console.error("[Business.create] User upsert FAILED:", e?.message || String(e));
       }
       await createBusiness({ ...input, userId, name: input.name });
       if (ctx.user.email) {
