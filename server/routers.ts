@@ -78,6 +78,26 @@ export const appRouter = router({
         return { error: e?.message || String(e), code: e?.code, hint: e?.hint };
       }
     }),
+    exactQuery: publicProcedure.query(async () => {
+      try {
+        const _pgModule = await import("postgres");
+        const pgConn = process.env.DATABASE_URL;
+        if (!pgConn) return { error: "no_url" };
+        const client = _pgModule.default(pgConn, { ssl: false });
+        try {
+          // EXACT same query as drizzle generates
+          const r = await client.unsafe(
+            `select "id", "openId", "name", "email", "loginMethod", "role", "stripeCustomerId", "subscriptionStatus", "planTier", "onboardingCompleted", "createdAt", "updatedAt", "lastSignedIn" from "users" limit $1`,
+            [1]
+          );
+          return { rows: r, count: r.length };
+        } finally {
+          await client.end();
+        }
+      } catch (e: any) {
+        return { error: e?.message || String(e), code: e?.code, hint: e?.hint, query: e?.query };
+      }
+    }),
     testQuery: publicProcedure.query(async () => {
       try {
         const db = await import("./db").then(m => m.getDb());
