@@ -352,13 +352,26 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import postgres from "postgres";
 async function getDb() {
-  if (!_db && ENV.databaseUrl) {
+  const now = Date.now();
+  if (_db && _dbClient && now - _lastConnectAttempt < 3e4) {
+    return _db;
+  }
+  if (ENV.databaseUrl) {
     try {
       console.log("[Database] Connecting to:", ENV.databaseUrl.substring(0, 30) + "...");
-      const client = postgres(ENV.databaseUrl, { ssl: false, max: 5 });
-      _db = drizzle(client);
+      if (_dbClient) {
+        try {
+          await _dbClient.end();
+        } catch {
+        }
+        _dbClient = null;
+        _db = null;
+      }
+      _dbClient = postgres(ENV.databaseUrl, { ssl: false, max: 5, idle_timeout: 30 });
+      _db = drizzle(_dbClient);
+      _lastConnectAttempt = now;
       try {
-        const r = await client`SELECT 1 as ok`;
+        const r = await _dbClient`SELECT 1 as ok`;
         console.log("[Database] Connection test:", r);
       } catch (e) {
         console.error("[Database] Connection test FAILED:", e?.message);
@@ -876,13 +889,15 @@ async function createBusiness(data) {
     throw error;
   }
 }
-var _db;
+var _db, _dbClient, _lastConnectAttempt;
 var init_db = __esm({
   "server/db.ts"() {
     init_schema();
     init_env();
     init_memory_store();
     _db = null;
+    _dbClient = null;
+    _lastConnectAttempt = 0;
   }
 });
 

@@ -6,16 +6,29 @@ import { ENV } from './_core/env';
 import { memoryStore, Business as MemoryBusiness, ApiKey as MemoryApiKey, ContentItem as MemoryContentItem } from './memory-store';
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _dbClient: any = null;
+let _lastConnectAttempt = 0;
 
 export async function getDb() {
-  if (!_db && ENV.databaseUrl) {
+  // Reconnect if more than 30 seconds since last attempt (or if no client)
+  const now = Date.now();
+  if (_db && _dbClient && (now - _lastConnectAttempt) < 30000) {
+    return _db;
+  }
+  if (ENV.databaseUrl) {
     try {
       console.log("[Database] Connecting to:", ENV.databaseUrl.substring(0, 30) + "...");
-      const client = postgres(ENV.databaseUrl, { ssl: false, max: 5 });
-      _db = drizzle(client);
+      if (_dbClient) {
+        try { await _dbClient.end(); } catch {}
+        _dbClient = null;
+        _db = null;
+      }
+      _dbClient = postgres(ENV.databaseUrl, { ssl: false, max: 5, idle_timeout: 30 });
+      _db = drizzle(_dbClient);
+      _lastConnectAttempt = now;
       // Test connection
       try {
-        const r = await client`SELECT 1 as ok`;
+        const r = await _dbClient`SELECT 1 as ok`;
         console.log("[Database] Connection test:", r);
       } catch (e: any) {
         console.error("[Database] Connection test FAILED:", e?.message);
