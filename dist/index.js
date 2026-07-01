@@ -3015,8 +3015,11 @@ var appRouter = router({
         const db = await Promise.resolve().then(() => (init_db(), db_exports)).then((m) => m.getDb());
         if (!db) return { error: "no_db_pool" };
         const pool = db.$client || db;
-        const r = await pool.unsafe("SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position");
-        return { columns: r };
+        const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
+        const usersCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name='users'");
+        const bizCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name='businesses'");
+        const usersCount = await pool.unsafe("SELECT count(*) FROM users");
+        return { tables, usersColumns: usersCols, businessesColumns: bizCols, usersCount };
       } catch (e) {
         return { error: e?.message || String(e) };
       }
