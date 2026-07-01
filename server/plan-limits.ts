@@ -8,6 +8,17 @@
 import { getDb } from "./db";
 import { usageTracking, connectedAccounts, teamMembers } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
+import postgres from "postgres";
+
+/**
+ * Direct PG client for queries that drizzle can't handle (MySQL schema vs PostgreSQL DB)
+ */
+async function getPg() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return null;
+  const client = postgres(url, { ssl: false });
+  return client;
+}
 
 export type PlanTier = "free" | "starter" | "pro" | "enterprise";
 
@@ -122,21 +133,19 @@ export async function getOrCreateUsage(businessId: number): Promise<{
   platformsConnected: number;
   aiGenerations: number;
 }> {
-  const db = await getDb();
-  if (!db) return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
+  const pg = await getPg();
+  if (!pg) return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
 
   const month = getCurrentMonth();
-  const existing = await db.select().from(usageTracking)
-    .where(and(eq(usageTracking.businessId, businessId), eq(usageTracking.month, month)))
-    .limit(1);
+  try {
+    const existing = await pg`SELECT * FROM usage_tracking WHERE "businessId" = ${businessId} AND "month" = ${month} LIMIT 1`;
+    if (existing.length > 0) return existing[0];
 
-  if (existing.length > 0) {
-    return existing[0];
+    await pg`INSERT INTO usage_tracking ("businessId", "month", "postsPublished", "postsGenerated", "platformsConnected", "aiGenerations") VALUES (${businessId}, ${month}, 0, 0, 0, 0)`;
+    return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
+  } finally {
+    await pg.end();
   }
-
-  // Create new record for this month
-  await db.insert(usageTracking).values({ businessId, month });
-  return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
 }
 
 /**

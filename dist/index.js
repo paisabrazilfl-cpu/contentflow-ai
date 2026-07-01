@@ -2708,6 +2708,13 @@ init_memory_store();
 init_db();
 init_schema();
 import { eq as eq6, and as and3 } from "drizzle-orm";
+import postgres2 from "postgres";
+async function getPg() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return null;
+  const client = postgres2(url, { ssl: false });
+  return client;
+}
 var PLAN_LIMITS = {
   free: {
     name: "Free Trial",
@@ -2791,15 +2798,17 @@ function getCurrentMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 async function getOrCreateUsage(businessId) {
-  const db = await getDb();
-  if (!db) return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
+  const pg = await getPg();
+  if (!pg) return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
   const month = getCurrentMonth();
-  const existing = await db.select().from(usageTracking).where(and3(eq6(usageTracking.businessId, businessId), eq6(usageTracking.month, month))).limit(1);
-  if (existing.length > 0) {
-    return existing[0];
+  try {
+    const existing = await pg`SELECT * FROM usage_tracking WHERE "businessId" = ${businessId} AND "month" = ${month} LIMIT 1`;
+    if (existing.length > 0) return existing[0];
+    await pg`INSERT INTO usage_tracking ("businessId", "month", "postsPublished", "postsGenerated", "platformsConnected", "aiGenerations") VALUES (${businessId}, ${month}, 0, 0, 0, 0)`;
+    return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
+  } finally {
+    await pg.end();
   }
-  await db.insert(usageTracking).values({ businessId, month });
-  return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
 }
 async function incrementUsage(businessId, field) {
   const db = await getDb();
@@ -3190,10 +3199,10 @@ var appRouter = router({
       const name = "Luis";
       const email = "luis@contentflow.ai";
       try {
-        const postgres2 = (await import("postgres")).default;
+        const postgres3 = (await import("postgres")).default;
         const pgConn = process.env.DATABASE_URL;
         if (pgConn) {
-          const client = postgres2(pgConn, { ssl: false });
+          const client = postgres3(pgConn, { ssl: false });
           try {
             await client`INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn") VALUES (${openId}, ${name}, ${email}, ${"credentials"}, ${"admin"}, NOW()) ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()`;
           } finally {
@@ -3234,10 +3243,10 @@ var appRouter = router({
       autoApprove: z2.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
       try {
-        const postgres2 = (await import("postgres")).default;
+        const postgres3 = (await import("postgres")).default;
         const pgConn = process.env.DATABASE_URL;
         if (!pgConn) throw new Error("No DATABASE_URL");
-        const client = postgres2(pgConn, { ssl: false });
+        const client = postgres3(pgConn, { ssl: false });
         try {
           const userRows = await client`INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn")
              VALUES (${ctx.user.openId}, ${ctx.user.name || "User"}, ${ctx.user.email || null}, ${ctx.user.loginMethod || "credentials"}, ${"admin"}, NOW())
