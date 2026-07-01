@@ -14,6 +14,7 @@ import { scoreContent, getRecentTitles } from "./content-quality";
 import { checkAIVisibility } from "./ai-visibility";
 import { sendWelcomeEmail } from "./email-system";
 import { canConnectPlatform, canPublishContent, canUseContentType, canUseFeature, getOrCreateUsage, incrementUsage, getPlanLimits } from "./plan-limits";
+import * as composio from "./composio";
 
 export const appRouter = router({
   system: systemRouter,
