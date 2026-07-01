@@ -274,9 +274,10 @@ export const appRouter = router({
         // Verify table schemas
         const usageCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'usage_tracking' ORDER BY ordinal_position");
         const contentCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'content_queue' ORDER BY ordinal_position");
+        const userCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position");
         // Check result
         const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
-        return { tables: tables, usageColumns: usageCols, contentColumns: contentCols, message: "All tables created/verified" };
+        return { tables: tables, usageColumns: usageCols, contentColumns: contentCols, userColumns: userCols, message: "All tables created/verified" };
       } catch (e: any) {
         return { error: e?.message || String(e) };
       }
