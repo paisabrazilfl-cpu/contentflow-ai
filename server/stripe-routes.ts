@@ -13,9 +13,10 @@ import { users, invoices } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { COOKIE_NAME } from "../shared/const";
+import { ENV } from "./_core/env";
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const STRIPE_SECRET_KEY = ENV.stripeSecretKey;
+const STRIPE_WEBHOOK_SECRET = ENV.stripeWebhookSecret;
 
 // Plan configuration
 const PLANS: Record<string, { priceAmount: number; name: string; tier: string }> = {

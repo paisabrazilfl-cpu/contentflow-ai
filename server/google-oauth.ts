@@ -9,9 +9,10 @@
  */
 
 import { URL } from "url";
+import { ENV } from "./_core/env";
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const GOOGLE_CLIENT_ID = ENV.googleClientId;
+const GOOGLE_CLIENT_SECRET = ENV.googleClientSecret;
 const GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth";
 const GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token";
 

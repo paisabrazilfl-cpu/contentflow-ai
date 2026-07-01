@@ -3,6 +3,8 @@
  * Credentials come from environment variables — no keys are hardcoded.
  */
 
+import { ENV } from "../_core/env";
+
 export type OAuthPlatform =
   | "google_youtube"
   | "google_business"
@@ -39,7 +41,7 @@ export function getGoogleAuthUrl(redirectUri: string, platform: "google_youtube"
         ];
 
   const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID ?? "",
+    client_id: ENV.googleClientId ?? "",
     redirect_uri: redirectUri,
     response_type: "code",
     scope: scopes.join(" "),
@@ -56,8 +58,8 @@ export async function exchangeGoogleCode(code: string, redirectUri: string): Pro
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID ?? "",
-      client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      client_id: ENV.googleClientId ?? "",
+      client_secret: ENV.googleClientSecret ?? "",
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
     }),
@@ -72,8 +74,8 @@ export async function refreshGoogleToken(refreshToken: string): Promise<TokenRes
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       refresh_token: refreshToken,
-      client_id: process.env.GOOGLE_CLIENT_ID ?? "",
-      client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      client_id: ENV.googleClientId ?? "",
+      client_secret: ENV.googleClientSecret ?? "",
       grant_type: "refresh_token",
     }),
   });
@@ -97,7 +99,7 @@ export function getMetaAuthUrl(redirectUri: string, platform: "meta_facebook" | 
       : ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "publish_to_groups"];
 
   const params = new URLSearchParams({
-    client_id: process.env.META_APP_ID ?? "",
+    client_id: ENV.metaAppId ?? "",
     redirect_uri: redirectUri,
     scope: scopes.join(","),
     response_type: "code",
@@ -108,8 +110,8 @@ export function getMetaAuthUrl(redirectUri: string, platform: "meta_facebook" | 
 
 export async function exchangeMetaCode(code: string, redirectUri: string): Promise<TokenResponse> {
   const params = new URLSearchParams({
-    client_id: process.env.META_APP_ID ?? "",
-    client_secret: process.env.META_APP_SECRET ?? "",
+    client_id: ENV.metaAppId ?? "",
+    client_secret: ENV.metaAppSecret ?? "",
     redirect_uri: redirectUri,
     code,
   });
@@ -122,8 +124,8 @@ export async function refreshMetaToken(accessToken: string): Promise<TokenRespon
   // Meta uses long-lived tokens; exchange short-lived for long-lived
   const params = new URLSearchParams({
     grant_type: "fb_exchange_token",
-    client_id: process.env.META_APP_ID ?? "",
-    client_secret: process.env.META_APP_SECRET ?? "",
+    client_id: ENV.metaAppId ?? "",
+    client_secret: ENV.metaAppSecret ?? "",
     fb_exchange_token: accessToken,
   });
   const res = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${params}`);
@@ -140,7 +142,7 @@ export async function getMetaUserInfo(accessToken: string) {
 // ─── TikTok ───────────────────────────────────────────────────────────────────
 export function getTikTokAuthUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
-    client_key: process.env.TIKTOK_CLIENT_KEY ?? "",
+    client_key: ENV.tiktokClientKey ?? "",
     redirect_uri: redirectUri,
     scope: "user.info.basic,video.publish,video.upload",
     response_type: "code",
@@ -154,8 +156,8 @@ export async function exchangeTikTokCode(code: string, redirectUri: string): Pro
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_key: process.env.TIKTOK_CLIENT_KEY ?? "",
-      client_secret: process.env.TIKTOK_CLIENT_SECRET ?? "",
+      client_key: ENV.tiktokClientKey ?? "",
+      client_secret: ENV.tiktokClientSecret ?? "",
       code,
       grant_type: "authorization_code",
       redirect_uri: redirectUri,
@@ -171,8 +173,8 @@ export async function refreshTikTokToken(refreshToken: string): Promise<TokenRes
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_key: process.env.TIKTOK_CLIENT_KEY ?? "",
-      client_secret: process.env.TIKTOK_CLIENT_SECRET ?? "",
+      client_key: ENV.tiktokClientKey ?? "",
+      client_secret: ENV.tiktokClientSecret ?? "",
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),

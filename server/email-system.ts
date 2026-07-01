@@ -13,9 +13,10 @@
 
 import { getDb } from "./db";
 import { activityFeed } from "../drizzle/schema";
+import { ENV } from "./_core/env";
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const FROM_EMAIL = process.env.FROM_EMAIL || "notifications@contentflow.ai";
+const RESEND_API_KEY = ENV.resendApiKey;
+const FROM_EMAIL = ENV.fromEmail || "notifications@contentflow.ai";
 
 export type EmailPayload = {
   to: string;

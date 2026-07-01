@@ -9,9 +9,10 @@ import {
 } from "../db";
 import { sendBillingReceiptEmail, sendPaymentFailedEmail } from "../services/email";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
+import { ENV } from "../_core/env";
 
 function getStripe(): Stripe | null {
-  const key = process.env.STRIPE_SECRET_KEY;
+  const key = ENV.stripeSecretKey;
   if (!key) {
     console.warn("[Billing] STRIPE_SECRET_KEY not set");
     return null;
@@ -20,15 +21,15 @@ function getStripe(): Stripe | null {
 }
 
 const PLAN_PRICE_MAP: Record<string, string> = {
-  starter: process.env.STRIPE_PRICE_ID_STARTER ?? "",
-  pro: process.env.STRIPE_PRICE_ID_PRO ?? "",
-  agency: process.env.STRIPE_PRICE_ID_AGENCY ?? "",
+  starter: ENV.stripePriceStarter,
+  pro: ENV.stripePricePro,
+  agency: ENV.stripePriceAgency,
 };
 
 function getPlanFromPriceId(priceId: string): "starter" | "pro" | "agency" | "free" {
-  if (priceId === process.env.STRIPE_PRICE_ID_STARTER) return "starter";
-  if (priceId === process.env.STRIPE_PRICE_ID_PRO) return "pro";
-  if (priceId === process.env.STRIPE_PRICE_ID_AGENCY) return "agency";
+  if (priceId === ENV.stripePriceStarter) return "starter";
+  if (priceId === ENV.stripePricePro) return "pro";
+  if (priceId === ENV.stripePriceAgency) return "agency";
   return "free";
 }
 

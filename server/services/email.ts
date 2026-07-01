@@ -3,9 +3,12 @@
  * Set RESEND_API_KEY in environment variables.
  */
 import { Resend } from "resend";
+import { ENV } from "../_core/env";
+
+const APP_URL = ENV.appUrl || "https://contentflow.ai";
 
 function getResend() {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = ENV.resendApiKey;
   if (!apiKey) {
     console.warn("[Email] RESEND_API_KEY not set — emails will be skipped");
     return null;
@@ -28,7 +31,7 @@ export async function sendWelcomeEmail(to: string, name: string): Promise<void> 
           <h1 style="color:#f97316;margin-bottom:8px;">Welcome to ContentFlow AI</h1>
           <p style="color:#a1a1aa;">Hi ${name},</p>
           <p style="color:#a1a1aa;">Your account is ready. Start by connecting your social platforms and generating your first piece of AI-optimized content.</p>
-          <a href="${process.env.APP_URL ?? "https://contentflow.ai"}/dashboard" 
+          <a href="${APP_URL}/dashboard" 
              style="display:inline-block;background:#f97316;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:16px;">
             Go to Dashboard
           </a>
@@ -103,7 +106,7 @@ export async function sendUsageAlertEmail(
           ${isAtLimit
             ? `<p style="color:#a1a1aa;">Upgrade your plan to continue generating content without interruption.</p>`
             : ""}
-          <a href="${process.env.APP_URL ?? "https://contentflow.ai"}/billing" 
+          <a href="${APP_URL}/billing" 
              style="display:inline-block;background:#f97316;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:16px;">
             ${isAtLimit ? "Upgrade Plan" : "View Usage"}
           </a>
@@ -129,7 +132,7 @@ export async function sendPaymentFailedEmail(to: string, name: string, plan: str
           <h1 style="color:#ef4444;">Payment Failed</h1>
           <p style="color:#a1a1aa;">Hi ${name},</p>
           <p style="color:#a1a1aa;">We were unable to process your payment for the <strong>${plan}</strong> plan. Please update your payment method to avoid service interruption.</p>
-          <a href="${process.env.APP_URL ?? "https://contentflow.ai"}/billing" 
+          <a href="${APP_URL}/billing" 
              style="display:inline-block;background:#f97316;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:16px;">
             Update Payment Method
           </a>
