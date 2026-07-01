@@ -1,17 +1,12 @@
 /**
  * Business Analyzer — Onboarding Intelligence
- * 
- * Analyzes a business website URL via LLM to extract:
- * - Business niche/industry
- * - Key services/products
- * - Target audience
- * - Competitors
- * - Recommended topic clusters
- * - Optimal posting schedule per platform
- * - Platform priorities
+ *
+ * Uses Firecrawl to ACTUALLY scrape the website, then asks the LLM
+ * to analyze the real content (not guess from URL/name alone).
  */
 
 import { invokeLLM } from "./_core/llm";
+import { fetchPage } from "./web-search";
 
 export type BusinessAnalysis = {
   industry: string;
@@ -26,11 +21,27 @@ export type BusinessAnalysis = {
 };
 
 export async function analyzeBusinessWebsite(websiteUrl: string, businessName: string): Promise<BusinessAnalysis> {
+  // 1) Scrape the actual website
+  let siteContent = "";
+  let siteTitle = "";
+  let siteDescription = "";
+  try {
+    const page = await fetchPage(websiteUrl);
+    if (page) {
+      siteTitle = page.title;
+      siteDescription = page.description;
+      siteContent = page.content.slice(0, 6000);
+    }
+  } catch (e) {
+    console.warn("[BusinessAnalyzer] Could not scrape site, falling back to name inference:", String(e));
+  }
+
+  // 2) Ask the LLM with the actual scraped content
   const response = await invokeLLM({
     messages: [
       {
         role: "system",
-        content: `You are an expert digital marketing strategist and business analyst. Analyze the given business and generate a comprehensive content strategy. Be specific and actionable. Base your analysis on the business name and URL provided — infer the industry, services, and audience from the domain name and business name.`
+        content: `You are an expert digital marketing strategist and business analyst. Analyze the given business and generate a comprehensive content strategy. Be specific and actionable.`,
       },
       {
         role: "user",
@@ -39,8 +50,16 @@ export async function analyzeBusinessWebsite(websiteUrl: string, businessName: s
 Business Name: ${businessName}
 Website URL: ${websiteUrl}
 
+${siteContent ? `SCRAPED WEBSITE CONTENT:
+Title: ${siteTitle}
+Description: ${siteDescription}
+
+${siteContent}
+
+` : ""}${siteContent ? "Base your analysis on the ACTUAL scraped content above." : "Infer the industry from the domain name and business name."}
+
 Generate a comprehensive analysis including:
-1. Their likely industry/niche
+1. Their industry/niche
 2. Key services or products they offer
 3. Their target audience demographics and psychographics
 4. 3-5 likely competitors in their space
@@ -48,8 +67,8 @@ Generate a comprehensive analysis including:
 6. Recommended tone of voice
 7. Optimal posting schedule for each platform (Google Business, Instagram, Facebook, TikTok, YouTube, Reddit, WordPress)
 8. A brief content strategy summary
-9. 10-15 SEO keywords to target`
-      }
+9. 10-15 SEO keywords to target`,
+      },
     ],
     response_format: {
       type: "json_schema",
@@ -59,12 +78,12 @@ Generate a comprehensive analysis including:
         schema: {
           type: "object",
           properties: {
-            industry: { type: "string", description: "The business industry/niche" },
-            services: { type: "array", items: { type: "string" }, description: "Key services or products" },
-            targetAudience: { type: "string", description: "Target audience description" },
-            competitors: { type: "array", items: { type: "string" }, description: "Likely competitors" },
-            topicClusters: { type: "array", items: { type: "string" }, description: "Content topic clusters" },
-            toneOfVoice: { type: "string", description: "Recommended brand tone" },
+            industry: { type: "string" },
+            services: { type: "array", items: { type: "string" } },
+            targetAudience: { type: "string" },
+            competitors: { type: "array", items: { type: "string" } },
+            topicClusters: { type: "array", items: { type: "string" } },
+            toneOfVoice: { type: "string" },
             postingSchedule: {
               type: "array",
               items: {
@@ -73,21 +92,20 @@ Generate a comprehensive analysis including:
                   platform: { type: "string" },
                   frequency: { type: "string" },
                   bestTime: { type: "string" },
-                  priority: { type: "integer" }
+                  priority: { type: "integer" },
                 },
                 required: ["platform", "frequency", "bestTime", "priority"],
-                additionalProperties: false
+                additionalProperties: false,
               },
-              description: "Posting schedule per platform"
             },
-            contentStrategy: { type: "string", description: "Brief content strategy summary" },
-            keywords: { type: "array", items: { type: "string" }, description: "SEO keywords to target" }
+            contentStrategy: { type: "string" },
+            keywords: { type: "array", items: { type: "string" } },
           },
           required: ["industry", "services", "targetAudience", "competitors", "topicClusters", "toneOfVoice", "postingSchedule", "contentStrategy", "keywords"],
-          additionalProperties: false
-        }
-      }
-    }
+          additionalProperties: false,
+        },
+      },
+    },
   });
 
   const text = response.choices[0]?.message?.content;
@@ -95,5 +113,8 @@ Generate a comprehensive analysis including:
     throw new Error("Failed to get analysis from LLM");
   }
 
-  return JSON.parse(text) as BusinessAnalysis;
+  // Sometimes the LLM wraps in markdown ```json ... ``` — strip that
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+
+  return JSON.parse(cleaned) as BusinessAnalysis;
 }

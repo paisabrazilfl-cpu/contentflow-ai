@@ -2432,13 +2432,139 @@ init_env();
 import { TRPCError as TRPCError4 } from "@trpc/server";
 import { z as z3 } from "zod";
 
+// server/web-search.ts
+init_env();
+var FIRECRAWL_API = "https://api.firecrawl.dev";
+async function searchWeb(query, options = {}) {
+  const { limit = 5, fetchContent = false } = options;
+  if (!ENV.firecrawlKey) {
+    return fallbackDuckDuckGo(query, limit);
+  }
+  try {
+    const res = await fetch(`${FIRECRAWL_API}/v1/search`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${ENV.firecrawlKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ query, limit })
+    });
+    if (!res.ok) {
+      console.warn(`[WebSearch] Firecrawl ${res.status}, falling back to DDG`);
+      return fallbackDuckDuckGo(query, limit);
+    }
+    const data = await res.json();
+    const items = (data.data || []).map((d) => ({
+      url: d.url,
+      title: d.title || d.metadata?.title || "",
+      description: d.description || d.metadata?.description || ""
+    }));
+    if (fetchContent && items.length > 0) {
+      await Promise.allSettled(
+        items.slice(0, 3).map(async (item) => {
+          try {
+            const page = await fetchPage(item.url);
+            item.content = page?.content?.slice(0, 2e3) || "";
+          } catch {
+          }
+        })
+      );
+    }
+    return items;
+  } catch (e) {
+    console.warn("[WebSearch] Firecrawl error, falling back:", String(e));
+    return fallbackDuckDuckGo(query, limit);
+  }
+}
+async function fetchPage(url) {
+  if (!ENV.firecrawlKey) {
+    return null;
+  }
+  try {
+    const res = await fetch(`${FIRECRAWL_API}/v1/scrape`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${ENV.firecrawlKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        url,
+        formats: ["markdown"],
+        onlyMainContent: true
+      })
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json();
+    return {
+      content: data.data?.markdown || data.data?.content || "",
+      title: data.data?.metadata?.title || "",
+      description: data.data?.metadata?.description || ""
+    };
+  } catch {
+    return null;
+  }
+}
+async function fallbackDuckDuckGo(query, limit) {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ContentFlow-AI/1.0)"
+      }
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const results = [];
+    const linkRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+    const snippetRe = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+    const links = [];
+    let m;
+    while ((m = linkRe.exec(html)) !== null) {
+      const url2 = m[1];
+      const title = m[2].replace(/<[^>]+>/g, "").trim();
+      if (url2 && title && url2.startsWith("http")) {
+        links.push({ url: url2, title });
+      }
+    }
+    const snippets = [];
+    while ((m = snippetRe.exec(html)) !== null) {
+      snippets.push(m[1].replace(/<[^>]+>/g, "").trim());
+    }
+    for (let i = 0; i < Math.min(links.length, limit); i++) {
+      results.push({
+        url: links[i].url,
+        title: links[i].title,
+        description: snippets[i] || ""
+      });
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 // server/business-analyzer.ts
 async function analyzeBusinessWebsite(websiteUrl, businessName) {
+  let siteContent = "";
+  let siteTitle = "";
+  let siteDescription = "";
+  try {
+    const page = await fetchPage(websiteUrl);
+    if (page) {
+      siteTitle = page.title;
+      siteDescription = page.description;
+      siteContent = page.content.slice(0, 6e3);
+    }
+  } catch (e) {
+    console.warn("[BusinessAnalyzer] Could not scrape site, falling back to name inference:", String(e));
+  }
   const response = await invokeLLM({
     messages: [
       {
         role: "system",
-        content: `You are an expert digital marketing strategist and business analyst. Analyze the given business and generate a comprehensive content strategy. Be specific and actionable. Base your analysis on the business name and URL provided \u2014 infer the industry, services, and audience from the domain name and business name.`
+        content: `You are an expert digital marketing strategist and business analyst. Analyze the given business and generate a comprehensive content strategy. Be specific and actionable.`
       },
       {
         role: "user",
@@ -2447,8 +2573,16 @@ async function analyzeBusinessWebsite(websiteUrl, businessName) {
 Business Name: ${businessName}
 Website URL: ${websiteUrl}
 
+${siteContent ? `SCRAPED WEBSITE CONTENT:
+Title: ${siteTitle}
+Description: ${siteDescription}
+
+${siteContent}
+
+` : ""}${siteContent ? "Base your analysis on the ACTUAL scraped content above." : "Infer the industry from the domain name and business name."}
+
 Generate a comprehensive analysis including:
-1. Their likely industry/niche
+1. Their industry/niche
 2. Key services or products they offer
 3. Their target audience demographics and psychographics
 4. 3-5 likely competitors in their space
@@ -2467,12 +2601,12 @@ Generate a comprehensive analysis including:
         schema: {
           type: "object",
           properties: {
-            industry: { type: "string", description: "The business industry/niche" },
-            services: { type: "array", items: { type: "string" }, description: "Key services or products" },
-            targetAudience: { type: "string", description: "Target audience description" },
-            competitors: { type: "array", items: { type: "string" }, description: "Likely competitors" },
-            topicClusters: { type: "array", items: { type: "string" }, description: "Content topic clusters" },
-            toneOfVoice: { type: "string", description: "Recommended brand tone" },
+            industry: { type: "string" },
+            services: { type: "array", items: { type: "string" } },
+            targetAudience: { type: "string" },
+            competitors: { type: "array", items: { type: "string" } },
+            topicClusters: { type: "array", items: { type: "string" } },
+            toneOfVoice: { type: "string" },
             postingSchedule: {
               type: "array",
               items: {
@@ -2485,11 +2619,10 @@ Generate a comprehensive analysis including:
                 },
                 required: ["platform", "frequency", "bestTime", "priority"],
                 additionalProperties: false
-              },
-              description: "Posting schedule per platform"
+              }
             },
-            contentStrategy: { type: "string", description: "Brief content strategy summary" },
-            keywords: { type: "array", items: { type: "string" }, description: "SEO keywords to target" }
+            contentStrategy: { type: "string" },
+            keywords: { type: "array", items: { type: "string" } }
           },
           required: ["industry", "services", "targetAudience", "competitors", "topicClusters", "toneOfVoice", "postingSchedule", "contentStrategy", "keywords"],
           additionalProperties: false
@@ -2501,7 +2634,8 @@ Generate a comprehensive analysis including:
   if (!text2 || typeof text2 !== "string") {
     throw new Error("Failed to get analysis from LLM");
   }
-  return JSON.parse(text2);
+  const cleaned = text2.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  return JSON.parse(cleaned);
 }
 
 // server/content-quality.ts
@@ -2581,29 +2715,71 @@ async function getRecentTitles(businessId, limit = 50) {
 
 // server/ai-visibility.ts
 async function checkAIVisibility(businessName, industry, keywords, websiteUrl) {
-  const searchQueries = keywords.slice(0, 5).map((k) => `best ${k} ${industry}`);
+  const searchQueries = [
+    businessName,
+    `${businessName} ${industry}`,
+    ...keywords.slice(0, 3).map((k) => `best ${k} ${industry}`)
+  ];
+  const allResults = [];
+  for (const q of searchQueries.slice(0, 3)) {
+    try {
+      const r = await searchWeb(q, { limit: 3 });
+      allResults.push(...r);
+    } catch (e) {
+      console.warn("[Visibility] search failed for:", q, String(e));
+    }
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const uniqueResults = allResults.filter((r) => {
+    if (seen.has(r.url)) return false;
+    seen.add(r.url);
+    return true;
+  }).slice(0, 10);
+  const nameRegex = new RegExp(businessName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  const nameMentions = uniqueResults.filter(
+    (r) => nameRegex.test(r.title) || nameRegex.test(r.description)
+  );
+  let ownSiteContent = "";
+  if (websiteUrl) {
+    try {
+      const page = await fetchPage(websiteUrl);
+      if (page) {
+        ownSiteContent = `${page.title}
+${page.description}
+${page.content.slice(0, 2e3)}`;
+      }
+    } catch {
+    }
+  }
   const response = await invokeLLM({
     messages: [
       {
         role: "system",
-        content: `You are evaluating how visible a business is to AI systems. You represent what AI assistants (ChatGPT, Claude, Perplexity, Google AI) would know about this business. Be honest \u2014 if you don't know the business, score it low. Only give high scores if the business is genuinely well-known in its space.`
+        content: `You are an AI visibility analyst. You evaluate how visible a business is to AI systems (ChatGPT, Perplexity, Google AI). You base your score on REAL web search evidence, not on what you personally know.`
       },
       {
         role: "user",
-        content: `Evaluate the AI visibility of this business:
+        content: `Score the AI visibility of "${businessName}" based on actual web search results.
 
-Business: ${businessName}
 Industry: ${industry}
 Website: ${websiteUrl || "N/A"}
 Keywords: ${keywords.join(", ")}
 
-Questions to consider:
-1. Would you mention "${businessName}" if someone asked: "${searchQueries[0] || `best ${industry} company`}"?
-2. How much do you know about this specific business?
-3. Would you cite their website as a source for ${industry}-related questions?
-4. How likely is this business to appear in AI-generated recommendations?
+WEB SEARCH RESULTS for queries: ${searchQueries.slice(0, 3).join(" | ")}
+${uniqueResults.map((r, i) => `${i + 1}. ${r.title}
+   URL: ${r.url}
+   Description: ${r.description}`).join("\n")}
 
-Score each dimension and provide an overall AI visibility score 0-100.`
+DIRECT MENTIONS of "${businessName}": ${nameMentions.length} out of ${uniqueResults.length} results
+
+OWN WEBSITE CONTENT (first 2000 chars):
+${ownSiteContent || "(no content scraped)"}
+
+Based on this real evidence, score 0-100 for AI visibility:
+- nameRecognition (0-25): How many of the top results mention the business?
+- relevanceScore (0-25): Do the search results indicate the business is relevant for industry queries?
+- detailLevel (0-25): How much information is available about the business online?
+- citationLikelihood (0-25): Would an AI cite this business based on the available data?`
       }
     ],
     response_format: {
@@ -2614,13 +2790,13 @@ Score each dimension and provide an overall AI visibility score 0-100.`
         schema: {
           type: "object",
           properties: {
-            overallScore: { type: "integer", description: "Overall AI visibility score 0-100" },
-            nameRecognition: { type: "integer", description: "How well AI recognizes the business name 0-25" },
-            relevanceScore: { type: "integer", description: "How relevant the business is for industry queries 0-25" },
-            detailLevel: { type: "integer", description: "How much detail AI knows about the business 0-25" },
-            citationLikelihood: { type: "integer", description: "How likely AI would cite/recommend this business 0-25" },
-            citationsDetected: { type: "integer", description: "Estimated number of contexts where business would be mentioned" },
-            recommendations: { type: "array", items: { type: "string" }, description: "How to improve AI visibility" }
+            overallScore: { type: "integer" },
+            nameRecognition: { type: "integer" },
+            relevanceScore: { type: "integer" },
+            detailLevel: { type: "integer" },
+            citationLikelihood: { type: "integer" },
+            citationsDetected: { type: "integer" },
+            recommendations: { type: "array", items: { type: "string" } }
           },
           required: ["overallScore", "nameRecognition", "relevanceScore", "detailLevel", "citationLikelihood", "citationsDetected", "recommendations"],
           additionalProperties: false
@@ -2629,26 +2805,33 @@ Score each dimension and provide an overall AI visibility score 0-100.`
     }
   });
   const text2 = response.choices[0]?.message?.content;
-  if (!text2 || typeof text2 !== "string") {
-    return {
-      overallScore: 0,
-      breakdown: { nameRecognition: 0, relevanceScore: 0, detailLevel: 0, citationLikelihood: 0 },
-      citationsDetected: 0,
-      recommendations: ["Could not check visibility. Try again later."],
-      lastChecked: Date.now()
-    };
+  let parsed = {
+    overallScore: 0,
+    nameRecognition: 0,
+    relevanceScore: 0,
+    detailLevel: 0,
+    citationLikelihood: 0,
+    citationsDetected: nameMentions.length,
+    recommendations: ["Try again \u2014 could not parse LLM response"]
+  };
+  if (text2 && typeof text2 === "string") {
+    try {
+      parsed = JSON.parse(text2);
+    } catch {
+      console.warn("[Visibility] Failed to parse LLM response, using fallback");
+    }
   }
-  const parsed = JSON.parse(text2);
   return {
-    overallScore: Math.min(100, Math.max(0, parsed.overallScore)),
+    overallScore: Math.min(100, Math.max(0, parsed.overallScore ?? 0)),
     breakdown: {
-      nameRecognition: parsed.nameRecognition,
-      relevanceScore: parsed.relevanceScore,
-      detailLevel: parsed.detailLevel,
-      citationLikelihood: parsed.citationLikelihood
+      nameRecognition: parsed.nameRecognition ?? 0,
+      relevanceScore: parsed.relevanceScore ?? 0,
+      detailLevel: parsed.detailLevel ?? 0,
+      citationLikelihood: parsed.citationLikelihood ?? 0
     },
-    citationsDetected: parsed.citationsDetected,
-    recommendations: parsed.recommendations,
+    citationsDetected: parsed.citationsDetected ?? nameMentions.length,
+    searchResults: uniqueResults,
+    recommendations: parsed.recommendations ?? ["Set up a website, list on directories (Yelp, GMB, Crunchbase)"],
     lastChecked: Date.now()
   };
 }
@@ -2954,26 +3137,6 @@ async function initiateConnection(userId, platform) {
     return { error: `Composio request failed: ${String(err)}` };
   }
 }
-async function listConnections(userId) {
-  if (!hasKey()) return [];
-  try {
-    const res = await fetch(`${COMPOSIO_BASE}/connected_accounts?userId=${encodeURIComponent(userId)}`, {
-      method: "GET",
-      headers: composioAuth()
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.items || []).map((item) => ({
-      id: item.id,
-      toolkit: item.toolkit?.slug || item.authConfig?.toolkit?.slug || "",
-      status: item.status === "ACTIVE" ? "active" : item.status === "INITIATED" ? "pending" : "failed",
-      accountId: item.params?.id,
-      accountName: item.params?.name || item.params?.email
-    }));
-  } catch {
-    return [];
-  }
-}
 async function getConnection(connectionId) {
   if (!hasKey()) return null;
   try {
@@ -3009,10 +3172,174 @@ function composioEnabled() {
   return hasKey();
 }
 
+// server/oauth-handlers.ts
+import { Client as Client3 } from "pg";
+var PLATFORMS = {
+  google_business: {
+    id: "google_business",
+    name: "Google Business Profile",
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: [
+      "https://www.googleapis.com/auth/business.manage",
+      "openid",
+      "email",
+      "profile"
+    ],
+    clientIdEnv: "GOOGLE_CLIENT_ID",
+    clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+    refreshable: true,
+    notes: "Google Business Profile API"
+  },
+  youtube: {
+    id: "youtube",
+    name: "YouTube",
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: [
+      "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly",
+      "openid",
+      "email",
+      "profile"
+    ],
+    clientIdEnv: "GOOGLE_CLIENT_ID",
+    clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+    refreshable: true,
+    notes: "YouTube Data API v3"
+  },
+  facebook: {
+    id: "facebook",
+    name: "Facebook Pages",
+    authorizeUrl: "https://www.facebook.com/v18.0/dialog/oauth",
+    tokenUrl: "https://graph.facebook.com/v18.0/oauth/access_token",
+    scopes: [
+      "pages_show_list",
+      "pages_manage_posts",
+      "pages_read_engagement",
+      "pages_manage_metadata",
+      "publish_to_groups"
+    ],
+    clientIdEnv: "META_APP_ID",
+    clientSecretEnv: "META_APP_SECRET",
+    refreshable: true,
+    notes: "Facebook Pages API"
+  },
+  instagram: {
+    id: "instagram",
+    name: "Instagram Business",
+    authorizeUrl: "https://www.facebook.com/v18.0/dialog/oauth",
+    tokenUrl: "https://graph.facebook.com/v18.0/oauth/access_token",
+    scopes: [
+      "instagram_basic",
+      "instagram_content_publish",
+      "pages_show_list",
+      "pages_manage_posts"
+    ],
+    clientIdEnv: "META_APP_ID",
+    clientSecretEnv: "META_APP_SECRET",
+    refreshable: true,
+    notes: "Instagram Graph API"
+  },
+  tiktok: {
+    id: "tiktok",
+    name: "TikTok for Business",
+    authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
+    tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/",
+    scopes: ["user.info.basic", "video.publish", "video.upload"],
+    clientIdEnv: "TIKTOK_CLIENT_KEY",
+    clientSecretEnv: "TIKTOK_CLIENT_SECRET",
+    refreshable: true,
+    notes: "TikTok for Developers"
+  },
+  reddit: {
+    id: "reddit",
+    name: "Reddit",
+    authorizeUrl: "https://www.reddit.com/api/v1/authorize",
+    tokenUrl: "https://www.reddit.com/api/v1/access_token",
+    scopes: ["identity", "submit", "edit", "read"],
+    clientIdEnv: "REDDIT_CLIENT_ID",
+    clientSecretEnv: "REDDIT_CLIENT_SECRET",
+    refreshable: true,
+    notes: "Reddit OAuth2"
+  },
+  linkedin: {
+    id: "linkedin",
+    name: "LinkedIn",
+    authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
+    tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
+    scopes: ["openid", "profile", "email", "w_member_social"],
+    clientIdEnv: "LINKEDIN_CLIENT_ID",
+    clientSecretEnv: "LINKEDIN_CLIENT_SECRET",
+    refreshable: true,
+    notes: "LinkedIn API"
+  },
+  x: {
+    id: "x",
+    name: "X (Twitter)",
+    authorizeUrl: "https://twitter.com/i/oauth2/authorize",
+    tokenUrl: "https://api.twitter.com/2/oauth2/token",
+    scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+    clientIdEnv: "X_CLIENT_ID",
+    clientSecretEnv: "X_CLIENT_SECRET",
+    refreshable: true,
+    notes: "X API v2"
+  },
+  wordpress: {
+    id: "wordpress",
+    name: "WordPress.com",
+    authorizeUrl: "https://public-api.wordpress.com/oauth2/authorize",
+    tokenUrl: "https://public-api.wordpress.com/oauth2/token",
+    scopes: ["global", "posts"],
+    clientIdEnv: "WORDPRESS_CLIENT_ID",
+    clientSecretEnv: "WORDPRESS_CLIENT_SECRET",
+    refreshable: true,
+    notes: "WordPress.com OAuth2"
+  }
+};
+function isPlatformConfigured(platformId) {
+  const config = PLATFORMS[platformId];
+  if (!config) return false;
+  const clientId = process.env[config.clientIdEnv];
+  const clientSecret = process.env[config.clientSecretEnv];
+  return !!(clientId && clientSecret && clientId.length > 5 && clientSecret.length > 5);
+}
+function getAuthorizeUrl(platformId, redirectUri, state) {
+  const config = PLATFORMS[platformId];
+  if (!config) return null;
+  if (!isPlatformConfigured(platformId)) return null;
+  const clientId = process.env[config.clientIdEnv];
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: config.scopes.join(" "),
+    state
+  });
+  if (platformId === "tiktok") {
+    params.set("client_key", clientId);
+    params.delete("client_id");
+  }
+  if (platformId === "x") {
+    params.set("code_challenge", "challenge");
+    params.set("code_challenge_method", "plain");
+  }
+  return `${config.authorizeUrl}?${params.toString()}`;
+}
+function listAvailablePlatforms() {
+  return Object.values(PLATFORMS).map((p) => ({
+    id: p.id,
+    name: p.name,
+    configured: isPlatformConfigured(p.id),
+    scopes: p.scopes,
+    notes: p.notes
+  }));
+}
+
 // server/cron-router.ts
 import { z as z2 } from "zod";
 import { TRPCError as TRPCError3 } from "@trpc/server";
-import { Client as Client3 } from "pg";
+import { Client as Client4 } from "pg";
 var SCHEDULE_MINUTES = {
   every_minute: 1,
   every_5_min: 5,
@@ -3042,7 +3369,7 @@ var AGENT_PROMPTS = {
 async function getPg2() {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
-  const client = new Client3({ connectionString: url, ssl: false });
+  const client = new Client4({ connectionString: url, ssl: false });
   await client.connect();
   return client;
 }
@@ -3712,10 +4039,33 @@ var appRouter = router({
     }),
     // List Composio-connected accounts
     composioList: protectedProcedure.query(async ({ ctx }) => {
-      if (!composioEnabled()) return [];
-      return listConnections(String(ctx.user.id));
+      const business = await getBusinessByUserId(ctx.user.id);
+      if (!business) return listAvailablePlatforms();
+      const platforms = listAvailablePlatforms();
+      const client = new (await import("pg")).Client({
+        connectionString: process.env.DATABASE_URL,
+        ssl: false
+      });
+      await client.connect();
+      try {
+        const r = await client.query(
+          `SELECT platform, "accountName", "platformAccountId", status, "expiresAt", "updatedAt"
+           FROM connected_accounts WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
+          [business.id]
+        );
+        const connections = r.rows;
+        return platforms.map((p) => ({
+          ...p,
+          connections: connections.filter((c) => c.platform === p.id)
+        }));
+      } catch (e) {
+        console.warn("[composioList] error:", String(e));
+        return platforms;
+      } finally {
+        await client.end();
+      }
     }),
-    // Initiate OAuth via Composio
+    // Initiate OAuth via our direct handlers (no Composio)
     composioConnect: protectedProcedure.input(z3.object({
       platform: z3.string()
     })).mutation(async ({ ctx, input }) => {
@@ -3723,14 +4073,25 @@ var appRouter = router({
       if (!business) throw new TRPCError4({ code: "NOT_FOUND", message: "Business not found" });
       const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
       if (!platformCheck.allowed) throw new TRPCError4({ code: "FORBIDDEN", message: platformCheck.message });
-      if (!composioEnabled()) {
-        throw new TRPCError4({ code: "PRECONDITION_FAILED", message: "Composio not configured. Set COMPOSIO_API_KEY." });
+      const config = PLATFORMS[input.platform];
+      if (!config) {
+        throw new TRPCError4({ code: "NOT_FOUND", message: `Unknown platform: ${input.platform}` });
       }
-      const result = await initiateConnection(String(ctx.user.id), input.platform);
-      if ("error" in result) {
-        throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+      if (!isPlatformConfigured(input.platform)) {
+        throw new TRPCError4({
+          code: "PRECONDITION_FAILED",
+          message: `${config.name} OAuth not configured. Set ${config.clientIdEnv} and ${config.clientSecretEnv} in env vars.`
+        });
       }
-      return result;
+      const crypto = await import("crypto");
+      const state = crypto.randomBytes(16).toString("hex");
+      const baseUrl = process.env.APP_BASE_URL || "https://contentflow-ai-prod.onrender.com";
+      const redirectUri = `${baseUrl}/api/oauth/callback?platform=${encodeURIComponent(input.platform)}&businessId=${business.id}&state=${state}`;
+      const authorizeUrl = getAuthorizeUrl(input.platform, redirectUri, state);
+      if (!authorizeUrl) {
+        throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "Failed to build authorize URL" });
+      }
+      return { redirectUrl: authorizeUrl, connectionId: state, platform: input.platform };
     }),
     // Check connection status after OAuth callback
     composioStatus: protectedProcedure.input(z3.object({

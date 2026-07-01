@@ -1,17 +1,14 @@
 /**
- * AI Visibility Score
- * 
- * Checks how visible a business is on AI engines (ChatGPT, Perplexity, Google AI)
- * by analyzing whether the LLM "knows" about the business when asked relevant questions.
- * 
- * Scores 0-100 based on:
- * - Does the AI mention the business by name?
- * - Does it recommend the business for relevant queries?
- * - How detailed is the AI's knowledge?
- * - Is the business cited in relevant contexts?
+ * AI Visibility Score — REAL web search version
+ *
+ * Uses Firecrawl (web search) to find ACTUAL mentions of the business
+ * across the web, then asks the LLM to score visibility based on real data.
+ *
+ * Replaces the old "ask the LLM if it knows" approach (which was unreliable).
  */
 
 import { invokeLLM } from "./_core/llm";
+import { searchWeb, fetchPage } from "./web-search";
 
 export type VisibilityResult = {
   overallScore: number; // 0-100
@@ -22,12 +19,13 @@ export type VisibilityResult = {
     citationLikelihood: number; // 0-25
   };
   citationsDetected: number;
+  searchResults: Array<{ url: string; title: string; description: string }>;
   recommendations: string[];
   lastChecked: number; // timestamp
 };
 
 /**
- * Check AI visibility for a business
+ * Check AI visibility for a business using real web search
  */
 export async function checkAIVisibility(
   businessName: string,
@@ -35,32 +33,79 @@ export async function checkAIVisibility(
   keywords: string[],
   websiteUrl?: string
 ): Promise<VisibilityResult> {
-  // Ask the LLM to evaluate how well it knows this business
-  const searchQueries = keywords.slice(0, 5).map(k => `best ${k} ${industry}`);
+  // 1) REAL web search — find what the AI can find
+  const searchQueries = [
+    businessName,
+    `${businessName} ${industry}`,
+    ...keywords.slice(0, 3).map(k => `best ${k} ${industry}`),
+  ];
 
+  const allResults: Array<{ url: string; title: string; description: string }> = [];
+  for (const q of searchQueries.slice(0, 3)) {
+    try {
+      const r = await searchWeb(q, { limit: 3 });
+      allResults.push(...r);
+    } catch (e) {
+      console.warn("[Visibility] search failed for:", q, String(e));
+    }
+  }
+
+  // Dedupe by URL
+  const seen = new Set<string>();
+  const uniqueResults = allResults.filter(r => {
+    if (seen.has(r.url)) return false;
+    seen.add(r.url);
+    return true;
+  }).slice(0, 10);
+
+  // 2) Detect direct mentions of business name in search results
+  const nameRegex = new RegExp(businessName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  const nameMentions = uniqueResults.filter(r =>
+    nameRegex.test(r.title) || nameRegex.test(r.description)
+  );
+
+  // 3) Optionally fetch the business's own site
+  let ownSiteContent = "";
+  if (websiteUrl) {
+    try {
+      const page = await fetchPage(websiteUrl);
+      if (page) {
+        ownSiteContent = `${page.title}\n${page.description}\n${page.content.slice(0, 2000)}`;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4) Ask the LLM to score based on REAL search evidence
   const response = await invokeLLM({
     messages: [
       {
         role: "system",
-        content: `You are evaluating how visible a business is to AI systems. You represent what AI assistants (ChatGPT, Claude, Perplexity, Google AI) would know about this business. Be honest — if you don't know the business, score it low. Only give high scores if the business is genuinely well-known in its space.`
+        content: `You are an AI visibility analyst. You evaluate how visible a business is to AI systems (ChatGPT, Perplexity, Google AI). You base your score on REAL web search evidence, not on what you personally know.`,
       },
       {
         role: "user",
-        content: `Evaluate the AI visibility of this business:
+        content: `Score the AI visibility of "${businessName}" based on actual web search results.
 
-Business: ${businessName}
 Industry: ${industry}
 Website: ${websiteUrl || "N/A"}
 Keywords: ${keywords.join(", ")}
 
-Questions to consider:
-1. Would you mention "${businessName}" if someone asked: "${searchQueries[0] || `best ${industry} company`}"?
-2. How much do you know about this specific business?
-3. Would you cite their website as a source for ${industry}-related questions?
-4. How likely is this business to appear in AI-generated recommendations?
+WEB SEARCH RESULTS for queries: ${searchQueries.slice(0, 3).join(" | ")}
+${uniqueResults.map((r, i) => `${i + 1}. ${r.title}\n   URL: ${r.url}\n   Description: ${r.description}`).join("\n")}
 
-Score each dimension and provide an overall AI visibility score 0-100.`
-      }
+DIRECT MENTIONS of "${businessName}": ${nameMentions.length} out of ${uniqueResults.length} results
+
+OWN WEBSITE CONTENT (first 2000 chars):
+${ownSiteContent || "(no content scraped)"}
+
+Based on this real evidence, score 0-100 for AI visibility:
+- nameRecognition (0-25): How many of the top results mention the business?
+- relevanceScore (0-25): Do the search results indicate the business is relevant for industry queries?
+- detailLevel (0-25): How much information is available about the business online?
+- citationLikelihood (0-25): Would an AI cite this business based on the available data?`,
+      },
     ],
     response_format: {
       type: "json_schema",
@@ -70,43 +115,51 @@ Score each dimension and provide an overall AI visibility score 0-100.`
         schema: {
           type: "object",
           properties: {
-            overallScore: { type: "integer", description: "Overall AI visibility score 0-100" },
-            nameRecognition: { type: "integer", description: "How well AI recognizes the business name 0-25" },
-            relevanceScore: { type: "integer", description: "How relevant the business is for industry queries 0-25" },
-            detailLevel: { type: "integer", description: "How much detail AI knows about the business 0-25" },
-            citationLikelihood: { type: "integer", description: "How likely AI would cite/recommend this business 0-25" },
-            citationsDetected: { type: "integer", description: "Estimated number of contexts where business would be mentioned" },
-            recommendations: { type: "array", items: { type: "string" }, description: "How to improve AI visibility" }
+            overallScore: { type: "integer" },
+            nameRecognition: { type: "integer" },
+            relevanceScore: { type: "integer" },
+            detailLevel: { type: "integer" },
+            citationLikelihood: { type: "integer" },
+            citationsDetected: { type: "integer" },
+            recommendations: { type: "array", items: { type: "string" } },
           },
           required: ["overallScore", "nameRecognition", "relevanceScore", "detailLevel", "citationLikelihood", "citationsDetected", "recommendations"],
-          additionalProperties: false
-        }
-      }
-    }
+          additionalProperties: false,
+        },
+      },
+    },
   });
 
   const text = response.choices[0]?.message?.content;
-  if (!text || typeof text !== "string") {
-    return {
-      overallScore: 0,
-      breakdown: { nameRecognition: 0, relevanceScore: 0, detailLevel: 0, citationLikelihood: 0 },
-      citationsDetected: 0,
-      recommendations: ["Could not check visibility. Try again later."],
-      lastChecked: Date.now(),
-    };
+  let parsed: any = {
+    overallScore: 0,
+    nameRecognition: 0,
+    relevanceScore: 0,
+    detailLevel: 0,
+    citationLikelihood: 0,
+    citationsDetected: nameMentions.length,
+    recommendations: ["Try again — could not parse LLM response"],
+  };
+
+  if (text && typeof text === "string") {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      console.warn("[Visibility] Failed to parse LLM response, using fallback");
+    }
   }
 
-  const parsed = JSON.parse(text);
   return {
-    overallScore: Math.min(100, Math.max(0, parsed.overallScore)),
+    overallScore: Math.min(100, Math.max(0, parsed.overallScore ?? 0)),
     breakdown: {
-      nameRecognition: parsed.nameRecognition,
-      relevanceScore: parsed.relevanceScore,
-      detailLevel: parsed.detailLevel,
-      citationLikelihood: parsed.citationLikelihood,
+      nameRecognition: parsed.nameRecognition ?? 0,
+      relevanceScore: parsed.relevanceScore ?? 0,
+      detailLevel: parsed.detailLevel ?? 0,
+      citationLikelihood: parsed.citationLikelihood ?? 0,
     },
-    citationsDetected: parsed.citationsDetected,
-    recommendations: parsed.recommendations,
+    citationsDetected: parsed.citationsDetected ?? nameMentions.length,
+    searchResults: uniqueResults,
+    recommendations: parsed.recommendations ?? ["Set up a website, list on directories (Yelp, GMB, Crunchbase)"],
     lastChecked: Date.now(),
   };
 }

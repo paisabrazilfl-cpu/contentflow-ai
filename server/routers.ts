@@ -16,6 +16,8 @@ import { sendWelcomeEmail } from "./email-system";
 import * as memoryStore from "./memory-store";
 import { canConnectPlatform, canPublishContent, canUseContentType, canUseFeature, getOrCreateUsage, incrementUsage, getPlanLimits } from "./plan-limits";
 import * as composio from "./composio";
+import * as webSearch from "./web-search";
+import * as oauthHandlers from "./oauth-handlers";
 import { cronRouter } from "./cron-router";
 
 export const appRouter = router({
@@ -552,11 +554,36 @@ export const appRouter = router({
 
     // List Composio-connected accounts
     composioList: protectedProcedure.query(async ({ ctx }) => {
-      if (!composio.composioEnabled()) return [];
-      return composio.listConnections(String(ctx.user.id));
+      // Use direct OAuth handlers (no Composio needed)
+      const business = await db.getBusinessByUserId(ctx.user.id);
+      if (!business) return oauthHandlers.listAvailablePlatforms();
+      // Return available platforms + their configured status
+      const platforms = oauthHandlers.listAvailablePlatforms();
+      // Get existing connections for this business
+      const client = new (await import("pg")).Client({
+        connectionString: process.env.DATABASE_URL, ssl: false,
+      });
+      await client.connect();
+      try {
+        const r = await client.query(
+          `SELECT platform, "accountName", "platformAccountId", status, "expiresAt", "updatedAt"
+           FROM connected_accounts WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
+          [business.id]
+        );
+        const connections = r.rows;
+        return platforms.map(p => ({
+          ...p,
+          connections: connections.filter((c: any) => c.platform === p.id),
+        }));
+      } catch (e) {
+        console.warn("[composioList] error:", String(e));
+        return platforms;
+      } finally {
+        await client.end();
+      }
     }),
 
-    // Initiate OAuth via Composio
+    // Initiate OAuth via our direct handlers (no Composio)
     composioConnect: protectedProcedure.input(z.object({
       platform: z.string(),
     })).mutation(async ({ ctx, input }) => {
@@ -565,15 +592,29 @@ export const appRouter = router({
       const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
       if (!platformCheck.allowed) throw new TRPCError({ code: 'FORBIDDEN', message: platformCheck.message });
 
-      if (!composio.composioEnabled()) {
-        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Composio not configured. Set COMPOSIO_API_KEY.' });
+      const config = oauthHandlers.PLATFORMS[input.platform];
+      if (!config) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `Unknown platform: ${input.platform}` });
+      }
+      if (!oauthHandlers.isPlatformConfigured(input.platform)) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: `${config.name} OAuth not configured. Set ${config.clientIdEnv} and ${config.clientSecretEnv} in env vars.`
+        });
       }
 
-      const result = await composio.initiateConnection(String(ctx.user.id), input.platform);
-      if ('error' in result) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error });
+      // Generate state token and authorize URL
+      const crypto = await import("crypto");
+      const state = crypto.randomBytes(16).toString("hex");
+      const baseUrl = process.env.APP_BASE_URL || "https://contentflow-ai-prod.onrender.com";
+      const redirectUri = `${baseUrl}/api/oauth/callback?platform=${encodeURIComponent(input.platform)}&businessId=${business.id}&state=${state}`;
+
+      const authorizeUrl = oauthHandlers.getAuthorizeUrl(input.platform, redirectUri, state);
+      if (!authorizeUrl) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to build authorize URL' });
       }
-      return result;
+
+      return { redirectUrl: authorizeUrl, connectionId: state, platform: input.platform };
     }),
 
     // Check connection status after OAuth callback
