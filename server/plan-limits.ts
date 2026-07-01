@@ -8,15 +8,16 @@
 import { getDb } from "./db";
 import { usageTracking, connectedAccounts, teamMembers } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
-import postgres from "postgres";
+import { Client } from "pg";
 
 /**
- * Direct PG client for queries that drizzle can't handle (MySQL schema vs PostgreSQL DB)
+ * Direct PG client for queries that need to bypass drizzle
  */
-async function getPg() {
+async function getPg(): Promise<Client | null> {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
-  const client = postgres(url, { ssl: false });
+  const client = new Client({ connectionString: url, ssl: false });
+  await client.connect();
   return client;
 }
 
@@ -138,10 +139,10 @@ export async function getOrCreateUsage(businessId: number): Promise<{
 
   const month = getCurrentMonth();
   try {
-    const existing = await pg`SELECT * FROM usage_tracking WHERE "businessId" = ${businessId} AND "month" = ${month} LIMIT 1`;
-    if (existing.length > 0) return existing[0];
+    const existing = await pg.query(`SELECT * FROM usage_tracking WHERE "businessId" = $1 AND "month" = $2 LIMIT 1`, [businessId, month]);
+    if (existing.rows.length > 0) return existing.rows[0];
 
-    await pg`INSERT INTO usage_tracking ("businessId", "month", "postsPublished", "postsGenerated", "platformsConnected", "aiGenerations") VALUES (${businessId}, ${month}, 0, 0, 0, 0)`;
+    await pg.query(`INSERT INTO usage_tracking ("businessId", "month", "postsPublished", "postsGenerated", "platformsConnected", "aiGenerations") VALUES ($1, $2, 0, 0, 0, 0)`, [businessId, month]);
     return { postsPublished: 0, postsGenerated: 0, platformsConnected: 0, aiGenerations: 0 };
   } finally {
     await pg.end();
