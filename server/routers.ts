@@ -214,36 +214,45 @@ export const appRouter = router({
       contentTypes: z.any().optional(),
       autoApprove: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
-      // Force-create user with raw SQL to ensure FK constraint passes
-      // This bypasses any issues with the drizzle upsert
+      // Use raw SQL since drizzle schema is MySQL but DB is PostgreSQL
       let userId: number = ctx.user.id;
       try {
-        const pool = await import("./db").then(m => m.getDb());
-        if (pool) {
-          // Use raw SQL via drizzle's execute to ensure user is created
-          const sql = await import("drizzle-orm");
-          const schema = await import("../drizzle/schema");
-          await pool.insert(schema.users).values({
-            openId: ctx.user.openId,
-            name: ctx.user.name || "User",
-            email: ctx.user.email,
-            loginMethod: ctx.user.loginMethod || "credentials",
-            lastSignedIn: new Date(),
-          }).onConflictDoUpdate({
-            target: schema.users.openId,
-            set: { lastSignedIn: new Date() },
-          });
-          const dbUser = await db.getUserByOpenId(ctx.user.openId);
-          if (dbUser) userId = dbUser.id;
-          console.log(`[Business.create] User upserted: openId=${ctx.user.openId}, dbId=${userId}`);
-        } else {
-          console.warn("[Business.create] No DB pool available");
+        const dbInst = await import("./db");
+        const pool = dbInst.getDb();
+        const rawPool = (pool as any).$client || (dbInst as any)._dbClient;
+        if (rawPool && rawPool.unsafe) {
+          // Upsert user with raw SQL
+          await rawPool.unsafe(
+            `INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn")
+             VALUES ($1, $2, $3, $4, $5, NOW())
+             ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()
+             RETURNING id`,
+            [ctx.user.openId, ctx.user.name || "User", ctx.user.email || null, ctx.user.loginMethod || "credentials", "admin"]
+          ).then((r: any) => {
+            if (r && r[0] && r[0].id) userId = r[0].id;
+          }).catch((e: any) => console.error("[Business.create] user upsert error:", e?.message));
+
+          // Insert business
+          await rawPool.unsafe(
+            `INSERT INTO businesses ("userId", name, industry, "targetAudience", "toneOfVoice", "websiteUrl", description, timezone, "topicClusters", "contentTypes", "postingSchedule", "autoApprove")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)`,
+            [
+               userId, input.name, input.industry || null, input.targetAudience || null,
+               input.toneOfVoice || null, input.websiteUrl || null, input.description || null,
+               input.timezone || "UTC",
+               JSON.stringify(input.topicClusters || []),
+               JSON.stringify(input.contentTypes || []),
+               JSON.stringify(input.postingSchedule || []),
+               input.autoApprove || false,
+             ]
+          );
+          console.log(`[Business.create] Created for userId=${userId}, name=${input.name}`);
         }
       } catch (e: any) {
-        console.error("[Business.create] User upsert FAILED:", e?.message || String(e));
+        console.error("[Business.create] FAILED:", e?.message || String(e));
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: e?.message || String(e) });
       }
 
-      await db.createBusiness({ ...input, userId, name: input.name });
       // Send welcome email
       if (ctx.user.email) {
         sendWelcomeEmail(ctx.user.email, input.name).catch(() => {});

@@ -3154,30 +3154,43 @@ var appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       let userId = ctx.user.id;
       try {
-        const pool = await Promise.resolve().then(() => (init_db(), db_exports)).then((m) => m.getDb());
-        if (pool) {
-          const sql2 = await import("drizzle-orm");
-          const schema = await Promise.resolve().then(() => (init_schema(), schema_exports));
-          await pool.insert(schema.users).values({
-            openId: ctx.user.openId,
-            name: ctx.user.name || "User",
-            email: ctx.user.email,
-            loginMethod: ctx.user.loginMethod || "credentials",
-            lastSignedIn: /* @__PURE__ */ new Date()
-          }).onConflictDoUpdate({
-            target: schema.users.openId,
-            set: { lastSignedIn: /* @__PURE__ */ new Date() }
-          });
-          const dbUser = await getUserByOpenId(ctx.user.openId);
-          if (dbUser) userId = dbUser.id;
-          console.log(`[Business.create] User upserted: openId=${ctx.user.openId}, dbId=${userId}`);
-        } else {
-          console.warn("[Business.create] No DB pool available");
+        const dbInst = await Promise.resolve().then(() => (init_db(), db_exports));
+        const pool = dbInst.getDb();
+        const rawPool = pool.$client || dbInst._dbClient;
+        if (rawPool && rawPool.unsafe) {
+          await rawPool.unsafe(
+            `INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn")
+             VALUES ($1, $2, $3, $4, $5, NOW())
+             ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()
+             RETURNING id`,
+            [ctx.user.openId, ctx.user.name || "User", ctx.user.email || null, ctx.user.loginMethod || "credentials", "admin"]
+          ).then((r) => {
+            if (r && r[0] && r[0].id) userId = r[0].id;
+          }).catch((e) => console.error("[Business.create] user upsert error:", e?.message));
+          await rawPool.unsafe(
+            `INSERT INTO businesses ("userId", name, industry, "targetAudience", "toneOfVoice", "websiteUrl", description, timezone, "topicClusters", "contentTypes", "postingSchedule", "autoApprove")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)`,
+            [
+              userId,
+              input.name,
+              input.industry || null,
+              input.targetAudience || null,
+              input.toneOfVoice || null,
+              input.websiteUrl || null,
+              input.description || null,
+              input.timezone || "UTC",
+              JSON.stringify(input.topicClusters || []),
+              JSON.stringify(input.contentTypes || []),
+              JSON.stringify(input.postingSchedule || []),
+              input.autoApprove || false
+            ]
+          );
+          console.log(`[Business.create] Created for userId=${userId}, name=${input.name}`);
         }
       } catch (e) {
-        console.error("[Business.create] User upsert FAILED:", e?.message || String(e));
+        console.error("[Business.create] FAILED:", e?.message || String(e));
+        throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: e?.message || String(e) });
       }
-      await createBusiness({ ...input, userId, name: input.name });
       if (ctx.user.email) {
         sendWelcomeEmail(ctx.user.email, input.name).catch(() => {
         });
