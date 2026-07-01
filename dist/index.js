@@ -1067,31 +1067,52 @@ var init_sdk = __esm({
         }
         const sessionUserId = session.openId;
         const signedInAt = /* @__PURE__ */ new Date();
-        let user = await getUserByOpenId(sessionUserId);
+        let user = null;
+        try {
+          user = await getUserByOpenId(sessionUserId);
+        } catch (e) {
+          console.warn("[Auth] getUserByOpenId failed:", String(e));
+        }
         if (!user) {
           try {
             const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
-            await upsertUser({
-              openId: userInfo.openId,
-              name: userInfo.name || null,
-              email: userInfo.email ?? null,
-              loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-              lastSignedIn: signedInAt
-            });
-            user = await getUserByOpenId(userInfo.openId);
+            try {
+              await upsertUser({
+                openId: userInfo.openId,
+                name: userInfo.name || null,
+                email: userInfo.email ?? null,
+                loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
+                lastSignedIn: signedInAt
+              });
+            } catch (e) {
+              console.warn("[Auth] upsertUser(OAuth) failed:", String(e));
+            }
+            try {
+              user = await getUserByOpenId(userInfo.openId);
+            } catch (e) {
+              console.warn("[Auth] getUserByOpenId(OAuth) failed:", String(e));
+            }
           } catch (error) {
             console.warn("[Auth] OAuth sync skipped, using JWT payload:", String(error));
           }
         }
         if (!user) {
-          const upserted = await upsertUser({
-            openId: sessionUserId,
-            name: session.name || null,
-            email: null,
-            loginMethod: "credentials",
-            lastSignedIn: signedInAt
-          });
-          user = await getUserByOpenId(sessionUserId);
+          try {
+            await upsertUser({
+              openId: sessionUserId,
+              name: session.name || null,
+              email: null,
+              loginMethod: "credentials",
+              lastSignedIn: signedInAt
+            });
+          } catch (e) {
+            console.warn("[Auth] upsertUser(fallback) failed:", String(e));
+          }
+          try {
+            user = await getUserByOpenId(sessionUserId);
+          } catch (e) {
+            console.warn("[Auth] getUserByOpenId(fallback) failed:", String(e));
+          }
           if (!user) {
             return {
               id: 1,
@@ -1106,10 +1127,11 @@ var init_sdk = __esm({
             };
           }
         }
-        await upsertUser({
-          openId: user.openId,
-          lastSignedIn: signedInAt
-        });
+        try {
+          await upsertUser({ openId: user.openId, lastSignedIn: signedInAt });
+        } catch (e) {
+          console.warn("[Auth] upsertUser(lastlogin) failed:", String(e));
+        }
         return user;
       }
     };

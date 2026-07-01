@@ -284,20 +284,21 @@ class SDKServer {
 
     const sessionUserId = session.openId;
     const signedInAt = new Date();
-    let user = await db.getUserByOpenId(sessionUserId);
+    let user: any = null;
+    try { user = await db.getUserByOpenId(sessionUserId); } catch (e) { console.warn("[Auth] getUserByOpenId failed:", String(e)); }
 
     // If user not in DB, try OAuth sync first; fall back to JWT payload (simple auth)
     if (!user) {
       try {
         const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
-        await db.upsertUser({
+        try { await db.upsertUser({
           openId: userInfo.openId,
           name: userInfo.name || null,
           email: userInfo.email ?? null,
           loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
           lastSignedIn: signedInAt,
-        });
-        user = await db.getUserByOpenId(userInfo.openId);
+        }); } catch (e) { console.warn("[Auth] upsertUser(OAuth) failed:", String(e)); }
+        try { user = await db.getUserByOpenId(userInfo.openId); } catch (e) { console.warn("[Auth] getUserByOpenId(OAuth) failed:", String(e)); }
       } catch (error) {
         // OAuth sync failed (Manus server unreachable) — fall through to JWT-based user creation
         console.warn("[Auth] OAuth sync skipped, using JWT payload:", String(error));
@@ -306,14 +307,14 @@ class SDKServer {
 
     // Final fallback: create user from JWT session payload (simple credentials auth)
     if (!user) {
-      const upserted = await db.upsertUser({
+      try { await db.upsertUser({
         openId: sessionUserId,
         name: session.name || null,
         email: null,
         loginMethod: "credentials",
         lastSignedIn: signedInAt,
-      });
-      user = await db.getUserByOpenId(sessionUserId);
+      }); } catch (e) { console.warn("[Auth] upsertUser(fallback) failed:", String(e)); }
+      try { user = await db.getUserByOpenId(sessionUserId); } catch (e) { console.warn("[Auth] getUserByOpenId(fallback) failed:", String(e)); }
 
       // DB not configured — return in-memory user from JWT session
       if (!user) {
@@ -331,10 +332,7 @@ class SDKServer {
       }
     }
 
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
+    try { await db.upsertUser({ openId: user.openId, lastSignedIn: signedInAt }); } catch (e) { console.warn("[Auth] upsertUser(lastlogin) failed:", String(e)); }
 
     return user;
   }
