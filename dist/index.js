@@ -3134,6 +3134,27 @@ var appRouter = router({
           "createdAt" TIMESTAMP DEFAULT NOW(),
           "updatedAt" TIMESTAMP DEFAULT NOW()
         )`);
+        try {
+          await pool.unsafe(`DROP TABLE IF EXISTS content_queue`);
+        } catch {
+        }
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS content_queue (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          platform VARCHAR(64) NOT NULL,
+          "contentType" VARCHAR(64) DEFAULT 'social',
+          title TEXT,
+          content TEXT,
+          "mediaUrls" JSONB,
+          "scheduledFor" TIMESTAMP,
+          "publishedAt" TIMESTAMP,
+          status VARCHAR(32) DEFAULT 'pending',
+          "errorLog" TEXT,
+          "retryCount" INTEGER DEFAULT 0,
+          "engagementData" JSONB,
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
         await pool.unsafe(`CREATE TABLE IF NOT EXISTS content_templates (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER,
