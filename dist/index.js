@@ -3187,8 +3187,9 @@ var appRouter = router({
           "createdAt" TIMESTAMP DEFAULT NOW()
         )`);
         const usageCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'usage_tracking' ORDER BY ordinal_position");
+        const contentCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'content_queue' ORDER BY ordinal_position");
         const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
-        return { tables, usageColumns: usageCols, message: "All tables created/verified" };
+        return { tables, usageColumns: usageCols, contentColumns: contentCols, message: "All tables created/verified" };
       } catch (e) {
         return { error: e?.message || String(e) };
       }
