@@ -23,6 +23,10 @@ Format: `YYYY-MM-DD — Branch: description`
 ### Known Issues
 - Repo temporarily made public for Render access — re-private after QA verified
 
+### Fixes (2026-07-01 hotfix)
+- Fix `verifySession`: `appId` may be empty in credentials auth — skip non-empty check
+- Login API returns `success:true` but `auth.me` returned `null` — fixed session payload validation
+
 ---
 
 ## 2026-06-30
