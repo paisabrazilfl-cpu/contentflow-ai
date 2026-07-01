@@ -145,13 +145,15 @@ export const appRouter = router({
     }),
     dbSchema: publicProcedure.query(async () => {
       try {
-        const db = await import("./db").then(m => m.getDb());
-        if (!db) return { error: "no_db_pool" };
-        const pool = (db as any).$client || db;
+        const pgMod = await import("pg");
+        const pgConn = process.env.DATABASE_URL;
+        if (!pgConn) return { error: "no_db_url" };
+        const pool = new pgMod.Client({ connectionString: pgConn, ssl: false });
+        await pool.connect();
 
         // Drop and recreate users with all drizzle schema columns
-        try { await pool.unsafe(`DROP TABLE IF EXISTS users CASCADE`); } catch {}
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS users (
+        try { await pool.query(`DROP TABLE IF EXISTS users CASCADE`); } catch {}
+        await pool.query(`CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY,
           "openId" VARCHAR(64) NOT NULL UNIQUE,
           name TEXT,
@@ -167,7 +169,7 @@ export const appRouter = router({
           "lastSignedIn" TIMESTAMP DEFAULT NOW() NOT NULL
         )`);
 
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS businesses (
+        await pool.query(`CREATE TABLE IF NOT EXISTS businesses (
           id SERIAL PRIMARY KEY,
           "userId" INTEGER NOT NULL,
           name VARCHAR(255) NOT NULL,
@@ -187,7 +189,7 @@ export const appRouter = router({
         )`);
 
         // Other essential tables
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS connected_accounts (
+        await pool.query(`CREATE TABLE IF NOT EXISTS connected_accounts (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           platform VARCHAR(64) NOT NULL,
@@ -202,7 +204,7 @@ export const appRouter = router({
           "updatedAt" TIMESTAMP DEFAULT NOW()
         )`);
 
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS content_queue (
+        await pool.query(`CREATE TABLE IF NOT EXISTS content_queue (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           platform VARCHAR(64) NOT NULL,
@@ -217,7 +219,7 @@ export const appRouter = router({
           "updatedAt" TIMESTAMP DEFAULT NOW()
         )`);
 
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS api_keys (
+        await pool.query(`CREATE TABLE IF NOT EXISTS api_keys (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           provider VARCHAR(64) NOT NULL,
@@ -226,7 +228,7 @@ export const appRouter = router({
           "createdAt" TIMESTAMP DEFAULT NOW()
         )`);
 
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS analytics_logs (
+        await pool.query(`CREATE TABLE IF NOT EXISTS analytics_logs (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           platform VARCHAR(64),
@@ -237,7 +239,7 @@ export const appRouter = router({
           "updatedAt" TIMESTAMP DEFAULT NOW()
         )`);
 
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS activity_feed (
+        await pool.query(`CREATE TABLE IF NOT EXISTS activity_feed (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           action TEXT,
@@ -247,8 +249,8 @@ export const appRouter = router({
         )`);
 
         // Drop and recreate usage_tracking to ensure correct schema
-        try { await pool.unsafe(`DROP TABLE IF EXISTS usage_tracking`); } catch {}
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS usage_tracking (
+        try { await pool.query(`DROP TABLE IF EXISTS usage_tracking`); } catch {}
+        await pool.query(`CREATE TABLE IF NOT EXISTS usage_tracking (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           "month" VARCHAR(7) NOT NULL,
@@ -261,8 +263,8 @@ export const appRouter = router({
         )`);
 
         // Recreate content_queue with all drizzle schema columns
-        try { await pool.unsafe(`DROP TABLE IF EXISTS content_queue`); } catch {}
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS content_queue (
+        try { await pool.query(`DROP TABLE IF EXISTS content_queue`); } catch {}
+        await pool.query(`CREATE TABLE IF NOT EXISTS content_queue (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           platform VARCHAR(64) NOT NULL,
@@ -280,7 +282,7 @@ export const appRouter = router({
           "updatedAt" TIMESTAMP DEFAULT NOW()
         )`);
 
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS content_templates (
+        await pool.query(`CREATE TABLE IF NOT EXISTS content_templates (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER,
           name VARCHAR(255) NOT NULL,
@@ -292,7 +294,7 @@ export const appRouter = router({
           "updatedAt" TIMESTAMP DEFAULT NOW()
         )`);
 
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS agent_actions (
+        await pool.query(`CREATE TABLE IF NOT EXISTS agent_actions (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           action VARCHAR(128),
@@ -302,7 +304,7 @@ export const appRouter = router({
           "updatedAt" TIMESTAMP DEFAULT NOW()
         )`);
 
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS social_metrics (
+        await pool.query(`CREATE TABLE IF NOT EXISTS social_metrics (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           platform VARCHAR(64) NOT NULL,
@@ -315,12 +317,12 @@ export const appRouter = router({
         )`);
 
         // Verify table schemas
-        const usageCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'usage_tracking' ORDER BY ordinal_position");
-        const contentCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'content_queue' ORDER BY ordinal_position");
-        const userCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position");
+        const usageCols = await pool.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'usage_tracking' ORDER BY ordinal_position");
+        const contentCols = await pool.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'content_queue' ORDER BY ordinal_position");
+        const userCols = await pool.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position");
         // Create cron_jobs table for user-defined scheduled tasks
-        try { await pool.unsafe(`DROP TABLE IF EXISTS cron_jobs CASCADE`); } catch {}
-        await pool.unsafe(`CREATE TABLE IF NOT EXISTS cron_jobs (
+        try { await pool.query(`DROP TABLE IF EXISTS cron_jobs CASCADE`); } catch {}
+        await pool.query(`CREATE TABLE IF NOT EXISTS cron_jobs (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
           name VARCHAR(255) NOT NULL,
@@ -337,7 +339,7 @@ export const appRouter = router({
         )`);
 
         // Check result
-        const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
+        const tables = await pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");
         return { tables: tables, usageColumns: usageCols, contentColumns: contentCols, userColumns: userCols, message: "All tables created/verified" };
       } catch (e: any) {
         return { error: e?.message || String(e) };
