@@ -1,16 +1,15 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import postgres from "postgres";
+import { Client } from "pg";
 import { InsertUser, users, businesses } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { memoryStore, Business as MemoryBusiness, ApiKey as MemoryApiKey, ContentItem as MemoryContentItem } from './memory-store';
 
 let _db: ReturnType<typeof drizzle> | null = null;
-let _dbClient: any = null;
+let _dbClient: Client | null = null;
 let _lastConnectAttempt = 0;
 
 export async function getDb() {
-  // Reconnect if more than 30 seconds since last attempt (or if no client)
   const now = Date.now();
   if (_db && _dbClient && (now - _lastConnectAttempt) < 30000) {
     return _db;
@@ -23,21 +22,18 @@ export async function getDb() {
         _dbClient = null;
         _db = null;
       }
-      _dbClient = postgres(ENV.databaseUrl, { ssl: false, max: 5, idle_timeout: 30 });
+      _dbClient = new Client({
+        connectionString: ENV.databaseUrl,
+        ssl: false,
+      });
+      await _dbClient.connect();
       _db = drizzle(_dbClient);
       _lastConnectAttempt = now;
-      // Test connection
-      try {
-        const r = await _dbClient`SELECT 1 as ok`;
-        console.log("[Database] Connection test:", r);
-      } catch (e: any) {
-        console.error("[Database] Connection test FAILED:", e?.message);
-        _db = null;
-        return null;
-      }
+      console.log("[Database] Connected via pg.Client");
     } catch (error: any) {
       console.error("[Database] Failed to connect:", error?.message || String(error));
       _db = null;
+      _dbClient = null;
     }
   }
   return _db;

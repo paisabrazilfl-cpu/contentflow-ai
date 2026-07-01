@@ -350,7 +350,7 @@ __export(db_exports, {
 });
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import postgres from "postgres";
+import { Client } from "pg";
 async function getDb() {
   const now = Date.now();
   if (_db && _dbClient && now - _lastConnectAttempt < 3e4) {
@@ -367,20 +367,18 @@ async function getDb() {
         _dbClient = null;
         _db = null;
       }
-      _dbClient = postgres(ENV.databaseUrl, { ssl: false, max: 5, idle_timeout: 30 });
+      _dbClient = new Client({
+        connectionString: ENV.databaseUrl,
+        ssl: false
+      });
+      await _dbClient.connect();
       _db = drizzle(_dbClient);
       _lastConnectAttempt = now;
-      try {
-        const r = await _dbClient`SELECT 1 as ok`;
-        console.log("[Database] Connection test:", r);
-      } catch (e) {
-        console.error("[Database] Connection test FAILED:", e?.message);
-        _db = null;
-        return null;
-      }
+      console.log("[Database] Connected via pg.Client");
     } catch (error) {
       console.error("[Database] Failed to connect:", error?.message || String(error));
       _db = null;
+      _dbClient = null;
     }
   }
   return _db;
