@@ -449,16 +449,14 @@ async function getAllBusinesses() {
   }
 }
 async function getBusinessByUserId(userId) {
+  const memBiz = memoryStore.getBusinessByUserId(userId);
+  if (memBiz) return memBiz;
   const db = await getDb();
-  if (!db) {
-    return memoryStore.getBusinessByUserId(userId);
-  }
+  if (!db) return void 0;
   try {
     const pool = db.$client || db.session?.client;
-    console.log("[DB] getBusinessByUserId: pool exists?", !!pool, "has unsafe?", pool?.unsafe ? "yes" : "no");
     if (pool && pool.unsafe) {
       const r = await pool.unsafe(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
-      console.log("[DB] raw query result:", JSON.stringify(r));
       if (r && r.length > 0) return r[0];
       return void 0;
     }
@@ -466,7 +464,7 @@ async function getBusinessByUserId(userId) {
     return result.length > 0 ? result[0] : void 0;
   } catch (error) {
     console.error("[Database] Failed to get business by userId:", error);
-    return memoryStore.getBusinessByUserId(userId);
+    return void 0;
   }
 }
 async function getConnectedAccounts(businessId) {

@@ -127,19 +127,19 @@ export async function getAllBusinesses() {
 
 // TODO: add feature queries here as your schema grows.
 
-export async function getBusinessByUserId(userId: number) {
+export async function getBusinessByUserId(userId: number): Promise<any> {
+  // Prefer memory store (works regardless of DB schema mismatch)
+  const memBiz = memoryStore.getBusinessByUserId(userId);
+  if (memBiz) return memBiz;
+
   const db = await getDb();
-  if (!db) {
-    return memoryStore.getBusinessByUserId(userId);
-  }
+  if (!db) return undefined;
 
   try {
     // Use raw SQL since drizzle schema is MySQL but DB is PostgreSQL
     const pool = (db as any).$client || (db as any).session?.client;
-    console.log("[DB] getBusinessByUserId: pool exists?", !!pool, "has unsafe?", pool?.unsafe ? "yes" : "no");
     if (pool && pool.unsafe) {
       const r = await pool.unsafe(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
-      console.log("[DB] raw query result:", JSON.stringify(r));
       if (r && r.length > 0) return r[0];
       return undefined;
     }
@@ -147,7 +147,7 @@ export async function getBusinessByUserId(userId: number) {
     return result.length > 0 ? result[0] : undefined;
   } catch (error) {
     console.error("[Database] Failed to get business by userId:", error);
-    return memoryStore.getBusinessByUserId(userId);
+    return undefined;
   }
 }
 
