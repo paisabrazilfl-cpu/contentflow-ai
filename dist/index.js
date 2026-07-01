@@ -231,6 +231,71 @@ var ENV = {
   composioKey: process.env.COMPOSIO_API_KEY ?? ""
 };
 
+// server/memory-store.ts
+var MemoryStore = class {
+  businesses = [];
+  apiKeys = [];
+  contentItems = [];
+  nextBusinessId = 1;
+  nextApiKeyId = 1;
+  nextContentId = 1;
+  createBusiness(data) {
+    const business = {
+      ...data,
+      id: this.nextBusinessId++,
+      createdAt: /* @__PURE__ */ new Date(),
+      updatedAt: /* @__PURE__ */ new Date()
+    };
+    this.businesses.push(business);
+    return business;
+  }
+  getBusinessByUserId(userId) {
+    return this.businesses.find((b) => b.userId === userId);
+  }
+  getBusinessById(id) {
+    return this.businesses.find((b) => b.id === id);
+  }
+  updateBusiness(id, data) {
+    const idx = this.businesses.findIndex((b) => b.id === id);
+    if (idx === -1) return void 0;
+    this.businesses[idx] = {
+      ...this.businesses[idx],
+      ...data,
+      updatedAt: /* @__PURE__ */ new Date()
+    };
+    return this.businesses[idx];
+  }
+  addApiKey(data) {
+    const apiKey = {
+      ...data,
+      id: this.nextApiKeyId++,
+      createdAt: /* @__PURE__ */ new Date()
+    };
+    this.apiKeys.push(apiKey);
+    return apiKey;
+  }
+  getApiKeys(businessId) {
+    return this.apiKeys.filter((k) => k.businessId === businessId);
+  }
+  deleteApiKey(id) {
+    this.apiKeys = this.apiKeys.filter((k) => k.id !== id);
+  }
+  addContentItem(data) {
+    const item = {
+      ...data,
+      id: this.nextContentId++,
+      createdAt: /* @__PURE__ */ new Date(),
+      updatedAt: /* @__PURE__ */ new Date()
+    };
+    this.contentItems.push(item);
+    return item;
+  }
+  getContentItems(businessId) {
+    return this.contentItems.filter((c) => c.businessId === businessId);
+  }
+};
+var memoryStore = new MemoryStore();
+
 // server/db.ts
 var _db = null;
 async function getDb() {
@@ -333,8 +398,7 @@ async function getAllBusinesses() {
 async function getBusinessByUserId(userId) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get business: database not available");
-    return void 0;
+    return memoryStore.getBusinessByUserId(userId);
   }
   try {
     const result = await db.select().from(businesses).where(eq(businesses.userId, userId)).limit(1);
@@ -361,8 +425,9 @@ async function getConnectedAccounts(businessId) {
 async function getContentQueue(businessId, status) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get content queue: database not available");
-    return [];
+    const items = memoryStore.getContentItems(businessId);
+    if (status) return items.filter((i) => i.status === status);
+    return items;
   }
   try {
     const { contentQueue: contentQueue2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -469,8 +534,7 @@ async function getTeamMembers(businessId) {
 async function getApiKeys(businessId) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get API keys: database not available");
-    return [];
+    return memoryStore.getApiKeys(businessId);
   }
   try {
     const { apiKeys: apiKeys2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -483,8 +547,7 @@ async function getApiKeys(businessId) {
 async function saveApiKey(data) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot save API key: database not available");
-    return void 0;
+    return memoryStore.addApiKey(data);
   }
   try {
     const { apiKeys: apiKeys2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -577,8 +640,16 @@ async function updateContentStatus(contentId, status) {
 async function createContentItem(data) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot create content item: database not available");
-    return;
+    return memoryStore.addContentItem({
+      businessId: data.businessId,
+      platform: data.platform,
+      contentType: data.contentType,
+      title: data.title,
+      content: data.content,
+      status: "pending",
+      scheduledFor: data.scheduledFor,
+      engagementData: data.engagementData
+    });
   }
   try {
     const { contentQueue: contentQueue2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -649,7 +720,7 @@ async function addConnectedAccount(data) {
 async function updateBusiness(businessId, data) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot update business: database not available");
+    memoryStore.updateBusiness(businessId, data);
     return;
   }
   try {
@@ -679,8 +750,20 @@ async function removeConnectedAccount(accountId, businessId) {
 async function createBusiness(data) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot create business: database not available");
-    return;
+    return memoryStore.createBusiness({
+      userId: data.userId,
+      name: data.name,
+      industry: data.industry,
+      targetAudience: data.targetAudience,
+      toneOfVoice: data.toneOfVoice,
+      websiteUrl: data.websiteUrl,
+      description: data.description,
+      timezone: data.timezone || "UTC",
+      topicClusters: data.topicClusters,
+      contentTypes: data.contentTypes,
+      postingSchedule: data.postingSchedule,
+      autoApprove: data.autoApprove || false
+    });
   }
   try {
     const result = await db.insert(businesses).values({

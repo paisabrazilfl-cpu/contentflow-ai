@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import postgres from "postgres";
 import { InsertUser, users, businesses } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { memoryStore, Business as MemoryBusiness, ApiKey as MemoryApiKey, ContentItem as MemoryContentItem } from './memory-store';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -129,8 +130,7 @@ export async function getAllBusinesses() {
 export async function getBusinessByUserId(userId: number) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get business: database not available");
-    return undefined;
+    return memoryStore.getBusinessByUserId(userId);
   }
 
   try {
@@ -162,8 +162,9 @@ export async function getConnectedAccounts(businessId: number) {
 export async function getContentQueue(businessId: number, status?: string) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get content queue: database not available");
-    return [];
+    const items = memoryStore.getContentItems(businessId);
+    if (status) return items.filter(i => i.status === status);
+    return items;
   }
 
   try {
@@ -289,8 +290,7 @@ export async function getTeamMembers(businessId: number) {
 export async function getApiKeys(businessId: number) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get API keys: database not available");
-    return [];
+    return memoryStore.getApiKeys(businessId);
   }
 
   try {
@@ -305,8 +305,7 @@ export async function getApiKeys(businessId: number) {
 export async function saveApiKey(data: { businessId: number; keyName: string; keyValue: string; provider: string }) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot save API key: database not available");
-    return undefined;
+    return memoryStore.addApiKey(data);
   }
 
   try {
@@ -431,8 +430,16 @@ export async function createContentItem(data: {
 }) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot create content item: database not available");
-    return;
+    return memoryStore.addContentItem({
+      businessId: data.businessId,
+      platform: data.platform,
+      contentType: data.contentType,
+      title: data.title,
+      content: data.content,
+      status: "pending",
+      scheduledFor: data.scheduledFor,
+      engagementData: data.engagementData,
+    });
   }
 
   try {
@@ -523,7 +530,7 @@ export async function addConnectedAccount(data: {
 export async function updateBusiness(businessId: number, data: Partial<any>) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot update business: database not available");
+    memoryStore.updateBusiness(businessId, data);
     return;
   }
 
@@ -591,8 +598,20 @@ export async function createBusiness(data: {
 }) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot create business: database not available");
-    return;
+    return memoryStore.createBusiness({
+      userId: data.userId,
+      name: data.name,
+      industry: data.industry,
+      targetAudience: data.targetAudience,
+      toneOfVoice: data.toneOfVoice,
+      websiteUrl: data.websiteUrl,
+      description: data.description,
+      timezone: data.timezone || "UTC",
+      topicClusters: data.topicClusters,
+      contentTypes: data.contentTypes,
+      postingSchedule: data.postingSchedule,
+      autoApprove: data.autoApprove || false,
+    });
   }
 
   try {

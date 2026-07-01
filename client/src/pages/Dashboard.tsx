@@ -12,6 +12,7 @@ import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Brain } from "lucide-react";
 import { toast } from "sonner";
+import { useEffect } from "react";
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
@@ -28,6 +29,14 @@ export default function Dashboard() {
     onSuccess: () => toast.success("AI Visibility Score updated!"),
     onError: (err) => toast.error(err.message),
   });
+
+  // Redirect to onboarding if no business
+  useEffect(() => {
+    if (!bizLoading && !business) {
+      toast.info("Complete onboarding to set up your business");
+      navigate("/onboarding");
+    }
+  }, [bizLoading, business, navigate]);
 
   // Compute real stats
   const publishedCount = contentData?.filter(c => c.status === "published").length || 0;
