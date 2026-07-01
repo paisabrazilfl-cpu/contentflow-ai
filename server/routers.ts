@@ -49,7 +49,7 @@ export const appRouter = router({
 
         // Set session cookie
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        const maxAge = Math.floor(ONE_YEAR_MS / 1000);
+        const maxAge = ONE_YEAR_MS;  // Express cookie maxAge is in milliseconds
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge });
 
         return { success: true, name };

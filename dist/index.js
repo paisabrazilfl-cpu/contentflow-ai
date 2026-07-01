@@ -2740,7 +2740,7 @@ var appRouter = router({
       }
       const token = await sdk.signSession({ openId, appId: ENV.appId, name });
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      const maxAge = Math.floor(ONE_YEAR_MS / 1e3);
+      const maxAge = ONE_YEAR_MS;
       ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge });
       return { success: true, name };
     }),
