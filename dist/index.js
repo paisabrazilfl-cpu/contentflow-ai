@@ -469,22 +469,25 @@ async function getAllBusinesses() {
   }
 }
 async function getBusinessByUserId(userId) {
+  const memBiz = memoryStore.getBusinessByUserId(userId);
+  if (memBiz) return memBiz;
   try {
-    const _pgModule = await import("postgres");
+    const pgMod = await import("pg");
     const pgConn = process.env.DATABASE_URL;
     if (pgConn) {
-      const client = postgres(pgConn, { ssl: false });
+      const client = new pgMod.Client({ connectionString: pgConn, ssl: false });
+      await client.connect();
       try {
-        const r = await client`SELECT * FROM businesses WHERE "userId" = ${userId} ORDER BY id DESC LIMIT 1`;
-        if (r && r.length > 0) {
-          return r[0];
+        const r = await client.query(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
+        if (r && r.rows && r.rows.length > 0) {
+          return r.rows[0];
         }
       } finally {
         await client.end();
       }
     }
   } catch (e) {
-    console.error("[DB] raw SQL getBusinessByUserId error:", String(e));
+    console.error("[DB] getBusinessByUserId error:", String(e));
   }
   return void 0;
 }
@@ -2712,11 +2715,11 @@ init_memory_store();
 init_db();
 init_schema();
 import { eq as eq6, and as and3 } from "drizzle-orm";
-import postgres2 from "postgres";
+import postgres from "postgres";
 async function getPg() {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
-  const client = postgres2(url, { ssl: false });
+  const client = postgres(url, { ssl: false });
   return client;
 }
 var PLAN_LIMITS = {
@@ -3301,10 +3304,10 @@ var appRouter = router({
       const name = "Luis";
       const email = "luis@contentflow.ai";
       try {
-        const postgres3 = (await import("postgres")).default;
+        const postgres2 = (await import("postgres")).default;
         const pgConn = process.env.DATABASE_URL;
         if (pgConn) {
-          const client = postgres3(pgConn, { ssl: false });
+          const client = postgres2(pgConn, { ssl: false });
           try {
             await client`INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn") VALUES (${openId}, ${name}, ${email}, ${"credentials"}, ${"admin"}, NOW()) ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()`;
           } finally {
@@ -3345,10 +3348,10 @@ var appRouter = router({
       autoApprove: z2.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
       try {
-        const postgres3 = (await import("postgres")).default;
+        const postgres2 = (await import("postgres")).default;
         const pgConn = process.env.DATABASE_URL;
         if (!pgConn) throw new Error("No DATABASE_URL");
-        const client = postgres3(pgConn, { ssl: false });
+        const client = postgres2(pgConn, { ssl: false });
         try {
           const userRows = await client`INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn")
              VALUES (${ctx.user.openId}, ${ctx.user.name || "User"}, ${ctx.user.email || null}, ${ctx.user.loginMethod || "credentials"}, ${"admin"}, NOW())

@@ -147,23 +147,28 @@ export async function getAllBusinesses() {
 // TODO: add feature queries here as your schema grows.
 
 export async function getBusinessByUserId(userId: number): Promise<any> {
-  // Try raw SQL with postgres.js directly (drizzle schema is MySQL, DB is PostgreSQL)
+  // Try memory store first (always available)
+  const memBiz = memoryStore.getBusinessByUserId(userId);
+  if (memBiz) return memBiz;
+
+  // Try raw SQL with pg.Client
   try {
-    const _pgModule = await import("postgres");
+    const pgMod = await import("pg");
     const pgConn = process.env.DATABASE_URL;
     if (pgConn) {
-      const client = (postgres as any)(pgConn, { ssl: false });
+      const client = new pgMod.Client({ connectionString: pgConn, ssl: false });
+      await client.connect();
       try {
-        const r = await client`SELECT * FROM businesses WHERE "userId" = ${userId} ORDER BY id DESC LIMIT 1`;
-        if (r && r.length > 0) {
-          return r[0];
+        const r = await client.query(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
+        if (r && r.rows && r.rows.length > 0) {
+          return r.rows[0];
         }
       } finally {
         await client.end();
       }
     }
   } catch (e) {
-    console.error("[DB] raw SQL getBusinessByUserId error:", String(e));
+    console.error("[DB] getBusinessByUserId error:", String(e));
   }
   return undefined;
 }
