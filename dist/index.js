@@ -3111,7 +3111,7 @@ var appRouter = router({
         await pool.unsafe(`CREATE TABLE IF NOT EXISTS usage_tracking (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
-          month VARCHAR(7) NOT NULL,
+          "monthKey" VARCHAR(7) NOT NULL,
           "postsPublished" INTEGER DEFAULT 0,
           "postsGenerated" INTEGER DEFAULT 0,
           "platformsConnected" INTEGER DEFAULT 0,
