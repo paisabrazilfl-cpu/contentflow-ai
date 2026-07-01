@@ -3015,11 +3015,91 @@ var appRouter = router({
         const db = await Promise.resolve().then(() => (init_db(), db_exports)).then((m) => m.getDb());
         if (!db) return { error: "no_db_pool" };
         const pool = db.$client || db;
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          "openId" VARCHAR(64) NOT NULL UNIQUE,
+          name TEXT,
+          email VARCHAR(320),
+          "loginMethod" VARCHAR(64),
+          role VARCHAR(20) DEFAULT 'user' NOT NULL,
+          "createdAt" TIMESTAMP DEFAULT NOW() NOT NULL,
+          "updatedAt" TIMESTAMP DEFAULT NOW() NOT NULL,
+          "lastSignedIn" TIMESTAMP DEFAULT NOW() NOT NULL
+        )`);
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS businesses (
+          id SERIAL PRIMARY KEY,
+          "userId" INTEGER NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          industry VARCHAR(128),
+          "targetAudience" TEXT,
+          "toneOfVoice" VARCHAR(128),
+          "websiteUrl" VARCHAR(512),
+          description TEXT,
+          timezone VARCHAR(64) DEFAULT 'UTC',
+          "topicClusters" JSONB,
+          "contentTypes" JSONB,
+          "postingSchedule" JSONB,
+          "autoApprove" BOOLEAN DEFAULT false,
+          "videoProvider" VARCHAR(64),
+          "createdAt" TIMESTAMP DEFAULT NOW() NOT NULL,
+          "updatedAt" TIMESTAMP DEFAULT NOW() NOT NULL
+        )`);
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS connected_accounts (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          platform VARCHAR(64) NOT NULL,
+          "platformAccountId" VARCHAR(255),
+          "accountName" TEXT,
+          "accessToken" TEXT,
+          "refreshToken" TEXT,
+          "expiresAt" TIMESTAMP,
+          scopes TEXT,
+          status VARCHAR(20) DEFAULT 'active',
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS content_queue (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          platform VARCHAR(64) NOT NULL,
+          "contentType" VARCHAR(64) DEFAULT 'social',
+          title TEXT,
+          content TEXT,
+          status VARCHAR(20) DEFAULT 'pending',
+          "scheduledFor" TIMESTAMP DEFAULT NOW(),
+          "publishedAt" TIMESTAMP,
+          "engagementData" JSONB,
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS api_keys (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          provider VARCHAR(64) NOT NULL,
+          "keyName" VARCHAR(128) NOT NULL,
+          "keyValue" TEXT NOT NULL,
+          "createdAt" TIMESTAMP DEFAULT NOW()
+        )`);
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS analytics_logs (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          platform VARCHAR(64),
+          "metricType" VARCHAR(64),
+          "metricValue" NUMERIC,
+          metadata JSONB,
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS activity_feed (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          action TEXT,
+          platform VARCHAR(64),
+          description TEXT,
+          "createdAt" TIMESTAMP DEFAULT NOW()
+        )`);
         const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
-        const usersCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name='users'");
-        const bizCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name='businesses'");
-        const usersCount = await pool.unsafe("SELECT count(*) FROM users");
-        return { tables, usersColumns: usersCols, businessesColumns: bizCols, usersCount };
+        return { tables, message: "Tables created/verified" };
       } catch (e) {
         return { error: e?.message || String(e) };
       }
