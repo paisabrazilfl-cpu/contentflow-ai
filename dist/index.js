@@ -3064,11 +3064,12 @@ var appRouter = router({
     freshDrizzle: publicProcedure.query(async () => {
       try {
         const drizzleMod = await import("drizzle-orm/node-postgres");
-        const postgresMod = await import("postgres");
+        const pgMod = await import("pg");
         const schema = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const pgConn = process.env.DATABASE_URL;
         if (!pgConn) return { error: "no_url" };
-        const client = postgresMod.default(pgConn, { ssl: false, max: 1 });
+        const client = new pgMod.Client({ connectionString: pgConn, ssl: false });
+        await client.connect();
         const db = drizzleMod.drizzle(client);
         try {
           const r = await db.select().from(schema.users).limit(1);

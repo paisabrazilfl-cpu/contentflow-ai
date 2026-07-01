@@ -81,15 +81,15 @@ export const appRouter = router({
     freshDrizzle: publicProcedure.query(async () => {
       try {
         const drizzleMod = await import("drizzle-orm/node-postgres");
-        const postgresMod = await import("postgres");
+        const pgMod = await import("pg");
         const schema = await import("../drizzle/schema");
         const pgConn = process.env.DATABASE_URL;
         if (!pgConn) return { error: "no_url" };
-        // Create FRESH connection
-        const client = postgresMod.default(pgConn, { ssl: false, max: 1 });
+        // Use pg.Client (node-postgres), which is what drizzle-orm/node-postgres expects
+        const client = new pgMod.Client({ connectionString: pgConn, ssl: false });
+        await client.connect();
         const db = drizzleMod.drizzle(client);
         try {
-          // Test with the exact same drizzle call
           const r = await db.select().from(schema.users).limit(1);
           return { rows: r, count: r.length, success: true };
         } finally {
