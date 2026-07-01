@@ -13,6 +13,7 @@ import { eq, and, lte, sql } from "drizzle-orm";
 import { generateContent } from "./ai-content";
 import { runPublishingWorker } from "./publishing-worker";
 import type { Express, Request, Response } from "express";
+import { ENV } from "./_core/env";
 
 export type CronResult = {
   businessesProcessed: number;
@@ -113,7 +114,7 @@ export function registerCronRoutes(app: Express) {
   app.post("/api/cron/publish", async (req: Request, res: Response) => {
     // Optional: verify a secret token for security
     const authHeader = req.headers.authorization;
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = ENV.cronSecret;
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       res.status(401).json({ error: "Unauthorized" });
       return;
@@ -131,7 +132,7 @@ export function registerCronRoutes(app: Express) {
   // Also support GET for simple webhook/heartbeat triggers
   app.get("/api/cron/publish", async (req: Request, res: Response) => {
     const token = req.query.token as string;
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = ENV.cronSecret;
     if (cronSecret && token !== cronSecret) {
       res.status(401).json({ error: "Unauthorized. Pass ?token=YOUR_CRON_SECRET" });
       return;

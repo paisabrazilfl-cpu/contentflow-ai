@@ -22,6 +22,7 @@ import {
 } from "../services/oauthProviders";
 import { protectedProcedure, router } from "../_core/trpc";
 import { enforcePlatformConnectionLimit, getUserTierSummary } from "../services/tierEnforcement";
+import { ENV } from "../_core/env";
 
 const PLATFORM_SCHEMA = z.enum([
   "google_youtube",
@@ -36,16 +37,16 @@ const PLATFORM_SCHEMA = z.enum([
 // This is safe to expose to the frontend — it only reveals presence, not values.
 function getConfiguredPlatforms(): string[] {
   const configured: string[] = [];
-  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  if (ENV.googleClientId && ENV.googleClientSecret) {
     configured.push("google_youtube", "google_business");
   }
-  if (process.env.META_APP_ID && process.env.META_APP_SECRET) {
+  if (ENV.metaAppId && ENV.metaAppSecret) {
     configured.push("meta_facebook", "meta_instagram");
   }
-  if (process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET) {
+  if (ENV.tiktokClientKey && ENV.tiktokClientSecret) {
     configured.push("tiktok");
   }
-  if (process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET) {
+  if (ENV.redditClientId && ENV.redditClientSecret) {
     configured.push("reddit");
   }
   return configured;
