@@ -1444,81 +1444,49 @@ init_schema();
 import { eq as eq4, and as and2, sql } from "drizzle-orm";
 
 // server/_core/llm.ts
-var ensureArray = (value) => Array.isArray(value) ? value : [value];
-var normalizeContentPart = (part) => {
-  if (typeof part === "string") {
-    return { type: "text", text: part };
+async function pickProvider() {
+  if (ENV.openAiKey) {
+    return { baseUrl: "https://api.openai.com/v1", apiKey: ENV.openAiKey, model: "gpt-4o-mini" };
   }
-  if (part.type === "text") {
-    return part;
+  if (ENV.nvidiaKey) {
+    return { baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: ENV.nvidiaKey, model: "meta/llama-3.1-70b-instruct" };
   }
-  if (part.type === "image_url") {
-    return part;
+  if (ENV.openRouterKey) {
+    return { baseUrl: "https://openrouter.ai/api/v1", apiKey: ENV.openRouterKey, model: "meta-llama/llama-3.1-8b-instruct:free" };
   }
-  if (part.type === "file_url") {
-    return part;
+  if (ENV.anthropicKey) {
+    return { baseUrl: "https://api.anthropic.com/v1", apiKey: ENV.anthropicKey, model: "claude-3-5-sonnet-20241022" };
   }
-  throw new Error("Unsupported message content part");
-};
+  if (ENV.geminiKey) {
+    return { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: ENV.geminiKey, model: "gemini-2.0-flash" };
+  }
+  if (ENV.kimiKey) {
+    return { baseUrl: "https://api.moonshot.cn/v1", apiKey: ENV.kimiKey, model: "moonshot-v1-8k" };
+  }
+  try {
+    const allBusinesses = await getAllBusinesses?.() || [];
+    for (const biz of allBusinesses) {
+      const keys = await getApiKeys(biz.id);
+      const openaiKey = keys.find((k) => /openai/i.test(k.provider || "") || /openai/i.test(k.keyName || ""));
+      if (openaiKey) {
+        return { baseUrl: "https://api.openai.com/v1", apiKey: openaiKey.keyValue, model: "gpt-4o-mini" };
+      }
+    }
+  } catch {
+  }
+  return null;
+}
 var normalizeMessage = (message) => {
   const { role, name, tool_call_id } = message;
-  if (role === "tool" || role === "function") {
-    const content = ensureArray(message.content).map((part) => typeof part === "string" ? part : JSON.stringify(part)).join("\n");
-    return {
-      role,
-      name,
-      tool_call_id,
-      content
-    };
+  const content = Array.isArray(message.content) ? message.content : [message.content];
+  const parts = content.map((c) => {
+    if (typeof c === "string") return { type: "text", text: c };
+    return c;
+  });
+  if (parts.length === 1 && parts[0].type === "text") {
+    return { role, name, content: parts[0].text };
   }
-  const contentParts = ensureArray(message.content).map(normalizeContentPart);
-  if (contentParts.length === 1 && contentParts[0].type === "text") {
-    return {
-      role,
-      name,
-      content: contentParts[0].text
-    };
-  }
-  return {
-    role,
-    name,
-    content: contentParts
-  };
-};
-var normalizeToolChoice = (toolChoice, tools) => {
-  if (!toolChoice) return void 0;
-  if (toolChoice === "none" || toolChoice === "auto") {
-    return toolChoice;
-  }
-  if (toolChoice === "required") {
-    if (!tools || tools.length === 0) {
-      throw new Error(
-        "tool_choice 'required' was provided but no tools were configured"
-      );
-    }
-    if (tools.length > 1) {
-      throw new Error(
-        "tool_choice 'required' needs a single tool or specify the tool name explicitly"
-      );
-    }
-    return {
-      type: "function",
-      function: { name: tools[0].function.name }
-    };
-  }
-  if ("name" in toolChoice) {
-    return {
-      type: "function",
-      function: { name: toolChoice.name }
-    };
-  }
-  return toolChoice;
-};
-var resolveApiUrl = () => ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0 ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions` : "https://forge.manus.im/v1/chat/completions";
-var assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("BUILT_IN_FORGE_API_KEY is not configured");
-  }
+  return { role, name, content: parts };
 };
 var normalizeResponseFormat = ({
   responseFormat,
@@ -1526,83 +1494,86 @@ var normalizeResponseFormat = ({
   outputSchema,
   output_schema
 }) => {
-  const explicitFormat = responseFormat || response_format;
-  if (explicitFormat) {
-    if (explicitFormat.type === "json_schema" && !explicitFormat.json_schema?.schema) {
-      throw new Error(
-        "responseFormat json_schema requires a defined schema object"
-      );
-    }
-    return explicitFormat;
-  }
+  const explicit = responseFormat || response_format;
+  if (explicit) return explicit;
   const schema = outputSchema || output_schema;
   if (!schema) return void 0;
-  if (!schema.name || !schema.schema) {
-    throw new Error("outputSchema requires both name and schema");
-  }
-  return {
-    type: "json_schema",
-    json_schema: {
-      name: schema.name,
-      schema: schema.schema,
-      ...typeof schema.strict === "boolean" ? { strict: schema.strict } : {}
-    }
-  };
+  return { type: "json_schema", json_schema: { name: schema.name, schema: schema.schema, strict: schema.strict ?? true } };
 };
-async function invokeLLM(params) {
-  assertApiKey();
-  const {
-    messages,
-    tools,
-    toolChoice,
-    tool_choice,
-    outputSchema,
-    output_schema,
-    responseFormat,
-    response_format
-  } = params;
-  const payload = {
-    model: "gemini-2.5-flash",
-    messages: messages.map(normalizeMessage)
-  };
-  if (tools && tools.length > 0) {
-    payload.tools = tools;
-  }
-  const normalizedToolChoice = normalizeToolChoice(
-    toolChoice || tool_choice,
-    tools
-  );
-  if (normalizedToolChoice) {
-    payload.tool_choice = normalizedToolChoice;
-  }
-  payload.max_tokens = 32768;
-  payload.thinking = {
-    "budget_tokens": 128
-  };
-  const normalizedResponseFormat = normalizeResponseFormat({
-    responseFormat,
-    response_format,
-    outputSchema,
-    output_schema
+var toAnthropicMessages = (messages) => {
+  const system = messages.find((m) => m.role === "system");
+  const rest = messages.filter((m) => m.role !== "system").map((m) => {
+    const c = Array.isArray(m.content) ? m.content : [m.content];
+    const text2 = c.map((x) => typeof x === "string" ? x : x.text || "").join("\n");
+    return { role: m.role, content: text2 };
   });
-  if (normalizedResponseFormat) {
-    payload.response_format = normalizedResponseFormat;
-  }
-  const response = await fetch(resolveApiUrl(), {
+  return { system: typeof system?.content === "string" ? system.content : "", messages: rest };
+};
+async function callOpenAICompatible(config, payload) {
+  const res = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`
+      authorization: `Bearer ${config.apiKey}`
     },
     body: JSON.stringify(payload)
   });
-  if (!response.ok) {
-    const errorText = await response.text();
+  if (!res.ok) {
+    const t2 = await res.text();
+    throw new Error(`LLM call failed (${config.baseUrl}): ${res.status} \u2013 ${t2}`);
+  }
+  return res.json();
+}
+async function callAnthropic(config, payload) {
+  const { system, messages } = toAnthropicMessages(payload.messages);
+  const res = await fetch(`${config.baseUrl}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": config.apiKey,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: config.model,
+      system,
+      messages,
+      max_tokens: payload.max_tokens || 4096
+    })
+  });
+  if (!res.ok) {
+    const t2 = await res.text();
+    throw new Error(`Anthropic call failed: ${res.status} \u2013 ${t2}`);
+  }
+  const data = await res.json();
+  return {
+    id: data.id,
+    created: Date.now(),
+    model: data.model,
+    choices: [{
+      index: 0,
+      message: { role: "assistant", content: data.content?.[0]?.text || "" },
+      finish_reason: data.stop_reason
+    }],
+    usage: { prompt_tokens: data.usage?.input_tokens || 0, completion_tokens: data.usage?.output_tokens || 0, total_tokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0) }
+  };
+}
+async function invokeLLM(params) {
+  const provider = await pickProvider();
+  if (!provider) {
     throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} \u2013 ${errorText}`
+      "No LLM API key configured. Set OPENAI_API_KEY, NVIDIA_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or add a key in Settings \u2192 API Keys."
     );
   }
-  return await response.json();
+  const { messages, responseFormat, response_format, outputSchema, output_schema, maxTokens, max_tokens } = params;
+  const payload = {
+    model: provider.model,
+    messages: messages.map(normalizeMessage)
+  };
+  payload.max_tokens = maxTokens || max_tokens || 4096;
+  const normalizedFormat = normalizeResponseFormat({ responseFormat, response_format, outputSchema, output_schema });
+  if (normalizedFormat) payload.response_format = normalizedFormat;
+  const data = provider.baseUrl.includes("anthropic.com") ? await callAnthropic(provider, payload) : await callOpenAICompatible(provider, payload);
+  return data;
 }
 
 // server/ai-content.ts
