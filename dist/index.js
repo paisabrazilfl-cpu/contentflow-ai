@@ -454,9 +454,11 @@ async function getBusinessByUserId(userId) {
     return memoryStore.getBusinessByUserId(userId);
   }
   try {
-    const pool = db.$client;
+    const pool = db.$client || db.session?.client;
+    console.log("[DB] getBusinessByUserId: pool exists?", !!pool, "has unsafe?", pool?.unsafe ? "yes" : "no");
     if (pool && pool.unsafe) {
       const r = await pool.unsafe(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
+      console.log("[DB] raw query result:", JSON.stringify(r));
       if (r && r.length > 0) return r[0];
       return void 0;
     }

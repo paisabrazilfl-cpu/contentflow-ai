@@ -135,9 +135,11 @@ export async function getBusinessByUserId(userId: number) {
 
   try {
     // Use raw SQL since drizzle schema is MySQL but DB is PostgreSQL
-    const pool = (db as any).$client;
+    const pool = (db as any).$client || (db as any).session?.client;
+    console.log("[DB] getBusinessByUserId: pool exists?", !!pool, "has unsafe?", pool?.unsafe ? "yes" : "no");
     if (pool && pool.unsafe) {
       const r = await pool.unsafe(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
+      console.log("[DB] raw query result:", JSON.stringify(r));
       if (r && r.length > 0) return r[0];
       return undefined;
     }
