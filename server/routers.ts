@@ -109,7 +109,29 @@ export const appRouter = router({
       contentTypes: z.any().optional(),
       autoApprove: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
-      await db.createBusiness({ ...input, userId: ctx.user.id, name: input.name });
+      // Ensure user exists in DB before creating business (FK constraint)
+      try {
+        await db.upsertUser({
+          openId: ctx.user.openId,
+          name: ctx.user.name,
+          email: ctx.user.email,
+          loginMethod: ctx.user.loginMethod || "credentials",
+          lastSignedIn: new Date(),
+        });
+      } catch (e) {
+        console.warn("[Business.create] upsertUser failed:", String(e));
+      }
+
+      // Re-fetch user to get the actual DB id
+      let userId = ctx.user.id;
+      try {
+        const dbUser = await db.getUserByOpenId(ctx.user.openId);
+        if (dbUser) userId = dbUser.id;
+      } catch (e) {
+        console.warn("[Business.create] getUserByOpenId failed:", String(e));
+      }
+
+      await db.createBusiness({ ...input, userId, name: input.name });
       // Send welcome email
       if (ctx.user.email) {
         sendWelcomeEmail(ctx.user.email, input.name).catch(() => {});

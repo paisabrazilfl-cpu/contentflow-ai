@@ -3009,7 +3009,25 @@ var appRouter = router({
       contentTypes: z2.any().optional(),
       autoApprove: z2.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
-      await createBusiness({ ...input, userId: ctx.user.id, name: input.name });
+      try {
+        await upsertUser({
+          openId: ctx.user.openId,
+          name: ctx.user.name,
+          email: ctx.user.email,
+          loginMethod: ctx.user.loginMethod || "credentials",
+          lastSignedIn: /* @__PURE__ */ new Date()
+        });
+      } catch (e) {
+        console.warn("[Business.create] upsertUser failed:", String(e));
+      }
+      let userId = ctx.user.id;
+      try {
+        const dbUser = await getUserByOpenId(ctx.user.openId);
+        if (dbUser) userId = dbUser.id;
+      } catch (e) {
+        console.warn("[Business.create] getUserByOpenId failed:", String(e));
+      }
+      await createBusiness({ ...input, userId, name: input.name });
       if (ctx.user.email) {
         sendWelcomeEmail(ctx.user.email, input.name).catch(() => {
         });
