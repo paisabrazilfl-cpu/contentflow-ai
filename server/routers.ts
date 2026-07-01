@@ -147,9 +147,56 @@ export const appRouter = router({
           "createdAt" TIMESTAMP DEFAULT NOW()
         )`);
 
+        // Create usage_tracking and any other missing tables
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS usage_tracking (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          month VARCHAR(7) NOT NULL,
+          "postsPublished" INTEGER DEFAULT 0,
+          "postsGenerated" INTEGER DEFAULT 0,
+          "platformsConnected" INTEGER DEFAULT 0,
+          "aiGenerations" INTEGER DEFAULT 0,
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
+
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS content_templates (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER,
+          name VARCHAR(255) NOT NULL,
+          "templateBody" TEXT,
+          platform VARCHAR(64),
+          "contentType" VARCHAR(64),
+          variables JSONB,
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
+
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS agent_actions (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          action VARCHAR(128),
+          result JSONB,
+          status VARCHAR(20) DEFAULT 'pending',
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
+
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS social_metrics (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          platform VARCHAR(64) NOT NULL,
+          date DATE DEFAULT CURRENT_DATE,
+          reach INTEGER DEFAULT 0,
+          engagement INTEGER DEFAULT 0,
+          impressions INTEGER DEFAULT 0,
+          clicks INTEGER DEFAULT 0,
+          "createdAt" TIMESTAMP DEFAULT NOW()
+        )`);
+
         // Check result
         const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
-        return { tables: tables, message: "Tables created/verified" };
+        return { tables: tables, message: "All tables created/verified" };
       } catch (e: any) {
         return { error: e?.message || String(e) };
       }
