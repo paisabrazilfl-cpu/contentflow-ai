@@ -941,6 +941,9 @@ var SDKServer = class {
   }
   getSessionSecret() {
     const secret = ENV.cookieSecret;
+    if (process.env.DEBUG_AUTH === "1") {
+      console.log(`[Auth] getSessionSecret returns: "${secret.substring(0, 10)}..." (length=${secret.length})`);
+    }
     return new TextEncoder().encode(secret);
   }
   /**
