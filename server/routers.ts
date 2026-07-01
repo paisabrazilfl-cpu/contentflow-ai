@@ -49,6 +49,28 @@ export const appRouter = router({
         verifyResult,
       };
     }),
+    testQuery: publicProcedure.query(async () => {
+      try {
+        const db = await import("./db").then(m => m.getDb());
+        if (!db) return { error: "no_db" };
+        const _pgModule = await import("postgres");
+        const pgConn = process.env.DATABASE_URL;
+        const client = (pgConn ? (pgConn.includes('render') ? _pgModule.default : _pgModule.default) : null);
+        if (!client) return { error: "no_lib" };
+        const pg = client(pgConn, { ssl: false });
+        try {
+          // Direct query
+          const direct = await pg`SELECT * FROM usage_tracking WHERE "businessId" = 1 AND "month" = '2026-07' LIMIT 1`;
+          // Drizzle-style: select id, "businessId", "month", "postsPublished", "postsGenerated", "platformsConnected", "aiGenerations", "createdAt", "updatedAt" from "usage_tracking" where ("usage_tracking"."businessId" = $1 and "usage_tracking"."month" = $2) limit $3
+          const drizzleLike = await pg.unsafe(`SELECT id, "businessId", "month", "postsPublished", "postsGenerated", "platformsConnected", "aiGenerations", "createdAt", "updatedAt" FROM "usage_tracking" WHERE ("usage_tracking"."businessId" = $1 AND "usage_tracking"."month" = $2) LIMIT $3`, [1, "2026-07", 1]);
+          return { direct: direct, drizzleLike: drizzleLike };
+        } finally {
+          await pg.end();
+        }
+      } catch (e: any) {
+        return { error: e?.message || String(e), code: e?.code, hint: e?.hint };
+      }
+    }),
     dbSchema: publicProcedure.query(async () => {
       try {
         const db = await import("./db").then(m => m.getDb());
