@@ -1599,38 +1599,6 @@ import { eq as eq4, and as and2, sql } from "drizzle-orm";
 // server/_core/llm.ts
 init_env();
 init_db();
-async function pickProvider() {
-  if (ENV.openAiKey) {
-    return { baseUrl: "https://api.openai.com/v1", apiKey: ENV.openAiKey, model: "gpt-4o-mini" };
-  }
-  if (ENV.nvidiaKey) {
-    return { baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: ENV.nvidiaKey, model: "meta/llama-3.1-70b-instruct" };
-  }
-  if (ENV.openRouterKey) {
-    return { baseUrl: "https://openrouter.ai/api/v1", apiKey: ENV.openRouterKey, model: "meta-llama/llama-3.1-8b-instruct:free" };
-  }
-  if (ENV.anthropicKey) {
-    return { baseUrl: "https://api.anthropic.com/v1", apiKey: ENV.anthropicKey, model: "claude-3-5-sonnet-20241022" };
-  }
-  if (ENV.geminiKey) {
-    return { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: ENV.geminiKey, model: "gemini-2.0-flash" };
-  }
-  if (ENV.kimiKey) {
-    return { baseUrl: "https://api.moonshot.cn/v1", apiKey: ENV.kimiKey, model: "moonshot-v1-8k" };
-  }
-  try {
-    const allBusinesses = await getAllBusinesses?.() || [];
-    for (const biz of allBusinesses) {
-      const keys = await getApiKeys(biz.id);
-      const openaiKey = keys.find((k) => /openai/i.test(k.provider || "") || /openai/i.test(k.keyName || ""));
-      if (openaiKey) {
-        return { baseUrl: "https://api.openai.com/v1", apiKey: openaiKey.keyValue, model: "gpt-4o-mini" };
-      }
-    }
-  } catch {
-  }
-  return null;
-}
 var normalizeMessage = (message) => {
   const { role, name, tool_call_id } = message;
   const content = Array.isArray(message.content) ? message.content : [message.content];
@@ -1713,22 +1681,36 @@ async function callAnthropic(config, payload) {
   };
 }
 async function invokeLLM(params) {
-  const provider = await pickProvider();
-  if (!provider) {
-    throw new Error(
-      "No LLM API key configured. Set OPENAI_API_KEY, NVIDIA_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or add a key in Settings \u2192 API Keys."
-    );
-  }
   const { messages, responseFormat, response_format, outputSchema, output_schema, maxTokens, max_tokens } = params;
   const payload = {
-    model: provider.model,
     messages: messages.map(normalizeMessage)
   };
   payload.max_tokens = maxTokens || max_tokens || 4096;
   const normalizedFormat = normalizeResponseFormat({ responseFormat, response_format, outputSchema, output_schema });
   if (normalizedFormat) payload.response_format = normalizedFormat;
-  const data = provider.baseUrl.includes("anthropic.com") ? await callAnthropic(provider, payload) : await callOpenAICompatible(provider, payload);
-  return data;
+  const candidates = [];
+  if (ENV.openAiKey) candidates.push({ baseUrl: "https://api.openai.com/v1", apiKey: ENV.openAiKey, model: "gpt-4o-mini" });
+  if (ENV.nvidiaKey) candidates.push({ baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: ENV.nvidiaKey, model: "meta/llama-3.1-70b-instruct" });
+  if (ENV.openRouterKey) candidates.push({ baseUrl: "https://openrouter.ai/api/v1", apiKey: ENV.openRouterKey, model: "meta-llama/llama-3.1-8b-instruct:free" });
+  if (ENV.anthropicKey) candidates.push({ baseUrl: "https://api.anthropic.com/v1", apiKey: ENV.anthropicKey, model: "claude-3-5-sonnet-20241022" });
+  if (ENV.geminiKey) candidates.push({ baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: ENV.geminiKey, model: "gemini-2.0-flash" });
+  if (ENV.kimiKey) candidates.push({ baseUrl: "https://api.moonshot.cn/v1", apiKey: ENV.kimiKey, model: "moonshot-v1-8k" });
+  if (candidates.length === 0) {
+    throw new Error("No LLM API key configured. Set OPENAI_API_KEY, NVIDIA_API_KEY, etc.");
+  }
+  const errors = [];
+  for (const provider of candidates) {
+    try {
+      const p = { ...payload, model: provider.model };
+      const data = provider.baseUrl.includes("anthropic.com") ? await callAnthropic(provider, p) : await callOpenAICompatible(provider, p);
+      return data;
+    } catch (e) {
+      const msg = `${provider.baseUrl}/${provider.model}: ${e?.message?.slice(0, 200) || e}`;
+      errors.push(msg);
+      console.warn(`[LLM] Provider ${provider.model} failed: ${msg}`);
+    }
+  }
+  throw new Error(`All LLM providers failed: ${errors.join(" | ")}`);
 }
 
 // server/ai-content.ts
