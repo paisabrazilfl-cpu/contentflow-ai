@@ -208,8 +208,12 @@ class SDKServer {
       return null;
     }
 
+    const cookiePrefix = cookieValue.substring(0, 30);
+    const secretKey = this.getSessionSecret();
+    const secretPrefix = (process.env.JWT_SECRET || "cf-fallback").substring(0, 10);
+    console.log(`[Auth] verifySession: cookie=${cookiePrefix}..., secret_prefix=${secretPrefix}, cookie_len=${cookieValue.length}`);
+
     try {
-      const secretKey = this.getSessionSecret();
       const { payload } = await jwtVerify(cookieValue, secretKey, {
         algorithms: ["HS256"],
       });
