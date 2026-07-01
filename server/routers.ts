@@ -147,7 +147,8 @@ export const appRouter = router({
           "createdAt" TIMESTAMP DEFAULT NOW()
         )`);
 
-        // Create usage_tracking and any other missing tables
+        // Drop and recreate usage_tracking to ensure correct schema
+        try { await pool.unsafe(`DROP TABLE IF EXISTS usage_tracking`); } catch {}
         await pool.unsafe(`CREATE TABLE IF NOT EXISTS usage_tracking (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,

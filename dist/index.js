@@ -3108,6 +3108,10 @@ var appRouter = router({
           description TEXT,
           "createdAt" TIMESTAMP DEFAULT NOW()
         )`);
+        try {
+          await pool.unsafe(`DROP TABLE IF EXISTS usage_tracking`);
+        } catch {
+        }
         await pool.unsafe(`CREATE TABLE IF NOT EXISTS usage_tracking (
           id SERIAL PRIMARY KEY,
           "businessId" INTEGER NOT NULL,
