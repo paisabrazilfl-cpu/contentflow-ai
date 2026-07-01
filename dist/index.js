@@ -354,10 +354,19 @@ import postgres from "postgres";
 async function getDb() {
   if (!_db && ENV.databaseUrl) {
     try {
-      const client = postgres(ENV.databaseUrl);
+      console.log("[Database] Connecting to:", ENV.databaseUrl.substring(0, 30) + "...");
+      const client = postgres(ENV.databaseUrl, { ssl: false, max: 5 });
       _db = drizzle(client);
+      try {
+        const r = await client`SELECT 1 as ok`;
+        console.log("[Database] Connection test:", r);
+      } catch (e) {
+        console.error("[Database] Connection test FAILED:", e?.message);
+        _db = null;
+        return null;
+      }
     } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+      console.error("[Database] Failed to connect:", error?.message || String(error));
       _db = null;
     }
   }
