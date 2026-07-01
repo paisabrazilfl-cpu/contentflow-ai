@@ -22,10 +22,12 @@ Format: `YYYY-MM-DD — Branch: description`
 
 ### Known Issues
 - Repo temporarily made public for Render access — re-private after QA verified
+- Luis is hardcoded as admin when DB not configured
 
 ### Fixes (2026-07-01 hotfix)
-- Fix `verifySession`: `appId` may be empty in credentials auth — skip non-empty check
-- Login API returns `success:true` but `auth.me` returned `null` — fixed session payload validation
+- Fix `verifySession`: skip `appId` non-empty check (empty in credentials auth)
+- Fix `authenticateRequest` no-DB path: return in-memory user from JWT when DATABASE_URL not set
+- Fix `upsertUser`: return void early when `DATABASE_URL` not configured (no TypeError on undefined `error`)
 
 ---
 

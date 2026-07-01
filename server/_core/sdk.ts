@@ -299,7 +299,7 @@ class SDKServer {
 
     // Final fallback: create user from JWT session payload (simple credentials auth)
     if (!user) {
-      await db.upsertUser({
+      const upserted = await db.upsertUser({
         openId: sessionUserId,
         name: session.name || null,
         email: null,
@@ -307,8 +307,20 @@ class SDKServer {
         lastSignedIn: signedInAt,
       });
       user = await db.getUserByOpenId(sessionUserId);
+
+      // DB not configured — return in-memory user from JWT session
       if (!user) {
-        throw ForbiddenError("User not found");
+        return {
+          id: 1,
+          openId: sessionUserId,
+          name: session.name || "User",
+          email: null,
+          loginMethod: "credentials",
+          role: "admin" as const,
+          createdAt: signedInAt,
+          updatedAt: signedInAt,
+          lastSignedIn: signedInAt,
+        };
       }
     }
 

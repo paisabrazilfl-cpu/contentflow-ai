@@ -20,6 +20,8 @@ export async function getDb() {
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
+  // Return early with void if DB not configured — used as no-op in credentials auth
+  if (!ENV.databaseUrl) return;
   if (!user.openId) {
     throw new Error("User openId is required for upsert");
   }
