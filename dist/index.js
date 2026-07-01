@@ -3120,14 +3120,18 @@ var appRouter = router({
       const name = "Luis";
       const email = "luis@contentflow.ai";
       try {
-        await upsertUser({
-          openId,
-          name,
-          email,
-          loginMethod: "credentials",
-          lastSignedIn: /* @__PURE__ */ new Date()
-        });
-      } catch {
+        const postgres2 = (await import("postgres")).default;
+        const pgConn = process.env.DATABASE_URL;
+        if (pgConn) {
+          const client = postgres2(pgConn, { ssl: false });
+          try {
+            await client`INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn") VALUES (${openId}, ${name}, ${email}, ${"credentials"}, ${"admin"}, NOW()) ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()`;
+          } finally {
+            await client.end();
+          }
+        }
+      } catch (e) {
+        console.warn("[Login] user upsert failed:", String(e));
       }
       const token = await sdk.signSession({ openId, appId: ENV.appId, name });
       const cookieOptions = getSessionCookieOptions(ctx.req);

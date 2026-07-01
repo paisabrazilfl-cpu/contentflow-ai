@@ -166,17 +166,20 @@ export const appRouter = router({
         const name = "Luis";
         const email = "luis@contentflow.ai";
 
-        // Upsert user in DB (no-op if DB not configured, that's fine)
+        // Upsert user in DB with raw SQL (drizzle schema is MySQL, DB is PostgreSQL)
         try {
-          await db.upsertUser({
-            openId,
-            name,
-            email,
-            loginMethod: "credentials",
-            lastSignedIn: new Date(),
-          });
-        } catch {
-          // DB might not be configured — continue anyway
+          const postgres = (await import("postgres")).default;
+          const pgConn = process.env.DATABASE_URL;
+          if (pgConn) {
+            const client = postgres(pgConn, { ssl: false });
+            try {
+              await client`INSERT INTO users ("openId", name, email, "loginMethod", role, "lastSignedIn") VALUES (${openId}, ${name}, ${email}, ${"credentials"}, ${"admin"}, NOW()) ON CONFLICT ("openId") DO UPDATE SET "lastSignedIn" = NOW()`;
+            } finally {
+              await client.end();
+            }
+          }
+        } catch (e) {
+          console.warn("[Login] user upsert failed:", String(e));
         }
 
         // Sign JWT session token
