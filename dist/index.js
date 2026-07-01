@@ -4228,7 +4228,16 @@ var appRouter = router({
     check: protectedProcedure.mutation(async ({ ctx }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
-      const keywords = business.topicClusters || [];
+      let keywords = [];
+      const tc = business.topicClusters;
+      if (Array.isArray(tc)) keywords = tc.filter((k) => typeof k === "string");
+      else if (typeof tc === "string") {
+        try {
+          const p = JSON.parse(tc);
+          if (Array.isArray(p)) keywords = p.filter((k) => typeof k === "string");
+        } catch {
+        }
+      }
       const result = await checkAIVisibility(
         business.name,
         business.industry || "general",

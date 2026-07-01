@@ -766,7 +766,13 @@ export const appRouter = router({
     check: protectedProcedure.mutation(async ({ ctx }) => {
       const business = await db.getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError({ code: 'NOT_FOUND' });
-      const keywords = (business.topicClusters as string[]) || [];
+      // topicClusters may come back as string, object, or array — normalize to string[]
+      let keywords: string[] = [];
+      const tc = business.topicClusters;
+      if (Array.isArray(tc)) keywords = tc.filter((k: any) => typeof k === "string");
+      else if (typeof tc === "string") {
+        try { const p = JSON.parse(tc); if (Array.isArray(p)) keywords = p.filter((k: any) => typeof k === "string"); } catch {}
+      }
       const result = await checkAIVisibility(
         business.name,
         business.industry || "general",
