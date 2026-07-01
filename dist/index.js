@@ -893,12 +893,21 @@ var SDKServer = class {
         });
         user = await getUserByOpenId(userInfo.openId);
       } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
+        console.warn("[Auth] OAuth sync skipped, using JWT payload:", String(error));
       }
     }
     if (!user) {
-      throw ForbiddenError("User not found");
+      await upsertUser({
+        openId: sessionUserId,
+        name: session.name || null,
+        email: null,
+        loginMethod: "credentials",
+        lastSignedIn: signedInAt
+      });
+      user = await getUserByOpenId(sessionUserId);
+      if (!user) {
+        throw ForbiddenError("User not found");
+      }
     }
     await upsertUser({
       openId: user.openId,
@@ -2568,6 +2577,29 @@ var appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
+    login: publicProcedure.input(z2.object({ username: z2.string(), password: z2.string() })).mutation(async ({ ctx, input }) => {
+      if (input.username !== "Luis" || input.password !== "1234") {
+        throw new TRPCError3({ code: "UNAUTHORIZED", message: "Invalid credentials" });
+      }
+      const openId = "user_luis";
+      const name = "Luis";
+      const email = "luis@contentflow.ai";
+      try {
+        await upsertUser({
+          openId,
+          name,
+          email,
+          loginMethod: "credentials",
+          lastSignedIn: /* @__PURE__ */ new Date()
+        });
+      } catch {
+      }
+      const token = await sdk.signSession({ openId, appId: ENV.appId, name });
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      const maxAge = Math.floor(ONE_YEAR_MS / 1e3);
+      ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge });
+      return { success: true, name };
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

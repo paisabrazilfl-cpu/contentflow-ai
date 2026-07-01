@@ -279,7 +279,7 @@ class SDKServer {
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
 
-    // If user not in DB, sync from OAuth server automatically
+    // If user not in DB, try OAuth sync first; fall back to JWT payload (simple auth)
     if (!user) {
       try {
         const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
@@ -292,13 +292,24 @@ class SDKServer {
         });
         user = await db.getUserByOpenId(userInfo.openId);
       } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
+        // OAuth sync failed (Manus server unreachable) — fall through to JWT-based user creation
+        console.warn("[Auth] OAuth sync skipped, using JWT payload:", String(error));
       }
     }
 
+    // Final fallback: create user from JWT session payload (simple credentials auth)
     if (!user) {
-      throw ForbiddenError("User not found");
+      await db.upsertUser({
+        openId: sessionUserId,
+        name: session.name || null,
+        email: null,
+        loginMethod: "credentials",
+        lastSignedIn: signedInAt,
+      });
+      user = await db.getUserByOpenId(sessionUserId);
+      if (!user) {
+        throw ForbiddenError("User not found");
+      }
     }
 
     await db.upsertUser({

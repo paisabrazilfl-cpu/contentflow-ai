@@ -1,10 +1,12 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "./db";
+import { sdk } from "./_core/sdk";
+import { ENV } from "./_core/env";
 import { generateContent } from "./ai-content";
 import { runPublishingWorker } from "./publishing-worker";
 import { analyzeBusinessWebsite } from "./business-analyzer";
@@ -17,6 +19,41 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    login: publicProcedure
+      .input(z.object({ username: z.string(), password: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        // Hardcoded credentials: Luis / 1234
+        if (input.username !== "Luis" || input.password !== "1234") {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid credentials' });
+        }
+
+        const openId = "user_luis";
+        const name = "Luis";
+        const email = "luis@contentflow.ai";
+
+        // Upsert user in DB (no-op if DB not configured, that's fine)
+        try {
+          await db.upsertUser({
+            openId,
+            name,
+            email,
+            loginMethod: "credentials",
+            lastSignedIn: new Date(),
+          });
+        } catch {
+          // DB might not be configured — continue anyway
+        }
+
+        // Sign JWT session token
+        const token = await sdk.signSession({ openId, appId: ENV.appId, name });
+
+        // Set session cookie
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        const maxAge = Math.floor(ONE_YEAR_MS / 1000);
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge });
+
+        return { success: true, name };
+      }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

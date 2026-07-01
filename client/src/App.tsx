@@ -16,11 +16,13 @@ import AdminPanel from "./pages/AdminPanel";
 import Onboarding from "./pages/Onboarding";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
+import Login from "./pages/Login";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/login" component={Login} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/content" component={ContentHub} />
       <Route path="/platforms" component={Platforms} />
