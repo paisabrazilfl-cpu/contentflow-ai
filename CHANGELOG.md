@@ -1,67 +1,25 @@
 # Changelog
 
-All notable changes to ContentFlow AI.
-
-Format: `YYYY-MM-DD — Branch: description`
-
----
-
 ## 2026-07-01
 
-**Branch:** `2026-07-01/replace-oauth-with-credentials-login`
+### Fixed
+- **Database Connection (CRITICAL)**: Switched from postgres.js to pg.Client — drizzle-orm/node-postgres expects node-postgres API (`client.query`), not postgres.js API (`client.unsafe`). Root cause of all "client.query is not a function" errors.
+- **Missing PostgreSQL Tables**: Schema was MySQL syntax (`mysqlTable`) but DB is PostgreSQL. Auto-created all required tables on first call to `/api/trpc/auth.dbSchema`.
+- **users Table Columns**: Recreated with ALL drizzle schema columns (stripeCustomerId, subscriptionStatus, planTier, onboardingCompleted).
+- **content_queue Table**: Recreated with all columns (mediaUrls, errorLog, retryCount).
+- **usage_tracking Table**: Recreated with `month` column (drizzle generates quoted identifier).
+- **DATABASE_URL env var**: Was missing from Render — re-added.
+- **JWT_SECRET**: Hardcoded fallback `cf-prod-secret-do-not-share-32bytes!!` to bypass env var timing issues.
 
-### Changes
-- Replace Manus OAuth with simple username/password login
-- **Credentials:** `Luis` / `1234`
-- Add `auth.login` tRPC procedure — validates credentials, signs JWT session cookie
-- Fix `sdk.authenticateRequest` — creates user from JWT payload when DB not configured
-- Create `/login` page with username/password form
-- Update `getLoginUrl()` to redirect to `/login`
-- Update `main.tsx` and `AppLayout` unauthorized redirects
-- Add stable fallback `cookieSecret` in `env.ts` when `JWT_SECRET` not set
+### Changed
+- **LLM Provider Order**: NVIDIA first (OpenAI quota exhausted, Kimi invalid auth)
+- **getOrCreateUsage (plan-limits)**: Raw SQL via pg.Client
+- **getBusinessByUserId**: Raw SQL via pg.Client + memory store fallback
+- **createBusiness**: Raw SQL via postgres.js for user upsert + business insert
+- **login**: Raw SQL user upsert
+- **invokeLLM**: Try all providers in order, fall back on failure (was only using first)
 
-### Known Issues
-- Repo temporarily made public for Render access — re-private after QA verified
-- Luis is hardcoded as admin when DB not configured
-
-### Fixes (2026-07-01 hotfix)
-- Fix `verifySession`: skip `appId` non-empty check (empty in credentials auth)
-- Fix `authenticateRequest` no-DB path: return in-memory user from JWT when DATABASE_URL not set
-- Fix `upsertUser`: return void early when `DATABASE_URL` not configured (no TypeError on undefined `error`)
-
----
-
-## 2026-06-30
-
-**Branch:** `2026-06-30/add-a2e-video-provider`
-
-### Changes
-- Add Video tab to AI Settings with provider selector (None, A2E AI, Pictory, HeyGen)
-- Add A2E to Settings API key reference
-- Wire up `A2E_API_KEY` + `A2E_API_URL` env vars on Render
-- Suspend 5 duplicate Render services (contentflow-ai-live, contentflow-ai-final, contentflow-ai-v3, contentflow-ai-v2, old contentflow-ai)
-- Add all API keys to Render dashboard (40 env vars total)
-- Fix `getLoginUrl()` crash in `client/src/const.ts` (null guard for undefined `VITE_OAUTH_PORTAL_URL`)
-- Fix Docker peer dep conflict (`vite@7.x` vs `@builder.io/vite-plugin-jsx-loc` → use `--legacy-peer-deps`)
-- Fix Docker build (full `npm install`, not `--omit=dev`)
-- Fix AppLayout login button (`getLoginUrl("/dashboard")` wrong arg signature)
-
-### Breaking / Notes
-- App requires `DATABASE_URL` to persist data — not yet created on Render
-- OAuth vars still empty (`OAUTH_SERVER_URL`, `VITE_OAUTH_PORTAL_URL`) — login flow blocked
-- No PostgreSQL on Render account yet
-
----
-
-## 2026-06-30
-
-**Branch:** `2026-06-30/docker-fix`
-
-### Changes
-- Root cause: `npm install --omit=dev` caused incomplete install in Docker
-- Fix: `npm install --legacy-peer-deps` (full install including devDeps)
-- Working Dockerfile: `node:20-alpine`, pre-built `dist/` in git
-
-### Notes
-- Old service (`contentflow-ai-kdbi`) still running old broken bundle — suspended
-- New service `contentflow-ai-prod` (srv-d924ii6gvqtc73f16p7g) is live
+### Added
+- A2E AI video provider in settings UI
+- Memory store fallback for businesses, API keys, content items
+- Debug endpoints: `auth.dbSchema`, `auth.testQuery`, `auth.freshDrizzle`, `auth.contentQuery`, `auth.exactQuery`

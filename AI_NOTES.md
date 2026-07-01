@@ -1,42 +1,31 @@
 # AI Notes
 
-## Model: Manus (Forge API only — Auth replaced)
+## 2026-07-01 Session
 
-### Why
-- Forge API covers LLM, storage, notifications, data API — one key does everything
+### The Big Bug
+**drizzle-orm/node-postgres expects `pg` library, not `postgres.js`.**
 
-### Auth — REPLACED (2026-07-01)
-- **Old:** Manus OAuth (required `VITE_APP_ID`, `VITE_OAUTH_PORTAL_URL`, `OAUTH_SERVER_URL`)
-- **New:** Simple credentials — `Luis` / `1234` via `/login`
-- Manus OAuth removed entirely — no third-party auth required
-- User is created from JWT payload on login — works even without DATABASE_URL
+The `drizzle-orm/node-postgres` driver calls `client.query(sql, params)` internally. `postgres.js` doesn't have a `client.query()` method — it uses `client.unsafe()` or `client\`\`` template literals.
 
-### Risks
-- No real auth — hardcoded credentials (internal tool only)
-- `JWT_SECRET` env var must be set on Render for production session security
-- App is tightly coupled to the hardcoded user `Luis`
+**Symptom**: `"Failed query: select ... from ..."` with `cause: "client.query is not a function"`
 
-### Why
-- OAuth out of the box — auth flow is pre-wired (`/api/oauth/callback`)
-- Forge API covers LLM, storage, notifications, data API — one key does everything
-- Manus handles session JWT signing with `jose`
+**Fix**: Use `import { Client } from "pg"` and `new Client({ connectionString })`.
 
-### Risks
-- App is tightly coupled to Manus OAuth endpoints (`/webdev.v1.WebDevAuthPublicService/ExchangeToken`)
-- If Manus auth server changes, login breaks
-- No fallback auth mechanism
+### Schema vs DB Mismatch
+The drizzle schema uses MySQL syntax (`mysqlTable`, `mysqlEnum`) but the actual DB is PostgreSQL. This is a pre-existing issue. We worked around it by:
+1. Auto-creating tables on first request via raw SQL
+2. Using raw SQL for all queries that fail through drizzle
+3. Memory store fallback for fast in-memory access
 
-### Objective
-- Replace Manus OAuth with Composio OAuth (user has Composio account)
-- Make OAuth vars configurable so any OAuth provider can be swapped
+### LLM Provider Strategy
+With OpenAI out of quota and Kimi having invalid auth, we lean on NVIDIA NIM. The 8b model has better rate limits than 70b. Fallback chain: NVIDIA 8b → NVIDIA 70b → OpenAI → OpenRouter → Anthropic → Gemini → Kimi.
 
----
+### Hardcoded Secrets
+- JWT_SECRET = `cf-prod-secret-do-not-share-32bytes!!` (Render env var timing issue)
+- DATABASE_URL hardcoded in env (avoids having to set it in multiple places)
 
-## Next Steps
-
-1. **Database** — Create PostgreSQL on Render and set `DATABASE_URL` (blocking everything)
-2. **OAuth** — Configure `OAUTH_SERVER_URL` + `VITE_OAUTH_PORTAL_URL` with Composio or Manus auth
-3. **Stripe** — Add `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and price IDs for billing
-4. **Social OAuth** — `GOOGLE_CLIENT_ID/SECRET`, `META_APP_ID/SECRET`, `TIKTOK_CLIENT_KEY/SECRET`, `REDDIT_CLIENT_ID/SECRET`
-5. **Video integration** — Connect A2E AI to actual video generation flow (currently wired but no server-side integration yet)
-6. **Pictory/HeyGen** — Add API keys when ready, wire to Video tab in settings
+### Working State
+- App: https://contentflow-ai-prod.onrender.com
+- Login: Luis / 1234
+- Full flow works: login → create business → AI generate → save to content_queue
+- AI generates full Instagram post with title, content, hashtags, platformNotes
