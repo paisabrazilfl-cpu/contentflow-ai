@@ -3014,8 +3014,9 @@ var appRouter = router({
       try {
         const db = await Promise.resolve().then(() => (init_db(), db_exports)).then((m) => m.getDb());
         if (!db) return { error: "no_db_pool" };
-        const r = await db.execute({ sql: "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position", params: [] });
-        return { columns: r.rows || r };
+        const pool = db.$client || db;
+        const r = await pool.unsafe("SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position");
+        return { columns: r };
       } catch (e) {
         return { error: e?.message || String(e) };
       }
