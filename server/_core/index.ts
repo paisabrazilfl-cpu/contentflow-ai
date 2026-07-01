@@ -21,6 +21,12 @@ function isPortAvailable(port: number): Promise<boolean> {
   });
 }
 
+// Boot diagnostic — print actual secret for debugging
+import { ENV as BOOT_ENV } from "./env";
+console.log(`[BOOT] ENV.cookieSecret length: ${BOOT_ENV.cookieSecret.length}, prefix: "${BOOT_ENV.cookieSecret.substring(0, 10)}..."`);
+console.log(`[BOOT] DATABASE_URL set: ${BOOT_ENV.databaseUrl ? "yes" : "no"}`);
+console.log(`[BOOT] OPENAI_API_KEY set: ${BOOT_ENV.openAiKey ? "yes" : "no"}`);
+
 async function findAvailablePort(startPort: number = 3000): Promise<number> {
   for (let port = startPort; port < startPort + 20; port++) {
     if (await isPortAvailable(port)) {

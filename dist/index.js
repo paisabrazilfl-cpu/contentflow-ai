@@ -3491,6 +3491,9 @@ function isPortAvailable(port) {
     server.on("error", () => resolve(false));
   });
 }
+console.log(`[BOOT] ENV.cookieSecret length: ${ENV.cookieSecret.length}, prefix: "${ENV.cookieSecret.substring(0, 10)}..."`);
+console.log(`[BOOT] DATABASE_URL set: ${ENV.databaseUrl ? "yes" : "no"}`);
+console.log(`[BOOT] OPENAI_API_KEY set: ${ENV.openAiKey ? "yes" : "no"}`);
 async function findAvailablePort(startPort = 3e3) {
   for (let port = startPort; port < startPort + 20; port++) {
     if (await isPortAvailable(port)) {
