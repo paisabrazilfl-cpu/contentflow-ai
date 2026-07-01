@@ -2845,6 +2845,20 @@ function composioEnabled() {
 var appRouter = router({
   system: systemRouter,
   auth: router({
+    // DEBUG endpoint - shows exactly what server sees
+    debug: publicProcedure.query(async ({ ctx }) => {
+      const cookies = ctx.req.headers.cookie || "";
+      const envCookieSecret = ENV.cookieSecret || "";
+      const jwtSecretEnv = process.env.JWT_SECRET || "";
+      return {
+        cookieHeader: cookies.substring(0, 200),
+        envCookieSecretLength: envCookieSecret.length,
+        envCookieSecretPrefix: envCookieSecret.substring(0, 10),
+        envCookieSecretSuffix: envCookieSecret.substring(envCookieSecret.length - 5),
+        jwtSecretEnvSet: jwtSecretEnv.length > 0,
+        jwtSecretEnvPrefix: jwtSecretEnv.substring(0, 10)
+      };
+    }),
     me: publicProcedure.query((opts) => opts.ctx.user),
     login: publicProcedure.input(z2.object({ username: z2.string(), password: z2.string() })).mutation(async ({ ctx, input }) => {
       if (input.username.trim().toLowerCase() !== "luis" || input.password.trim() !== "1234") {
