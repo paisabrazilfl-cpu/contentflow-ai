@@ -5,11 +5,8 @@ export const ENV = {
   // Fallback only for local dev where env var may not be configured
   // Hardcoded session signing key for production consistency
   cookieSecret: "cf-prod-secret-do-not-share-32bytes!!",
-  // Diagnostic: log actual secret on boot
-  // eslint-disable-next-line no-console
-  if (process.env.NODE_ENV === "production") {
-    console.log(`[BOOT] cookieSecret hash=${Buffer.from("cf-prod-secret-do-not-share-32bytes!!").toString("base64").substring(0, 12)}...`);
-  }
+  // Boot diagnostic
+  bootAuthSecret: "cf-prod-secret-do-not-share-32bytes!!",
   appUrl: process.env.VITE_APP_URL ?? "",
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   ownerName: process.env.OWNER_NAME ?? "",
