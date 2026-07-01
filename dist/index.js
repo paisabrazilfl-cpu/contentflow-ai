@@ -2639,7 +2639,7 @@ var appRouter = router({
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     login: publicProcedure.input(z2.object({ username: z2.string(), password: z2.string() })).mutation(async ({ ctx, input }) => {
-      if (input.username !== "Luis" || input.password !== "1234") {
+      if (input.username.trim().toLowerCase() !== "luis" || input.password.trim() !== "1234") {
         throw new TRPCError3({ code: "UNAUTHORIZED", message: "Invalid credentials" });
       }
       const openId = "user_luis";

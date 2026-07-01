@@ -23,7 +23,7 @@ export const appRouter = router({
       .input(z.object({ username: z.string(), password: z.string() }))
       .mutation(async ({ ctx, input }) => {
         // Hardcoded credentials: Luis / 1234
-        if (input.username !== "Luis" || input.password !== "1234") {
+        if (input.username.trim().toLowerCase() !== "luis" || input.password.trim() !== "1234") {
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid credentials' });
         }
 
