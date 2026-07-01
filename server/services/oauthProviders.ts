@@ -196,7 +196,7 @@ export async function getTikTokUserInfo(accessToken: string) {
 // ─── Reddit ───────────────────────────────────────────────────────────────────
 export function getRedditAuthUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
-    client_id: process.env.REDDIT_CLIENT_ID ?? "",
+    client_id: ENV.redditClientId,
     response_type: "code",
     state,
     redirect_uri: redirectUri,
@@ -208,7 +208,7 @@ export function getRedditAuthUrl(redirectUri: string, state: string): string {
 
 export async function exchangeRedditCode(code: string, redirectUri: string): Promise<TokenResponse> {
   const credentials = Buffer.from(
-    `${process.env.REDDIT_CLIENT_ID}:${process.env.REDDIT_CLIENT_SECRET}`
+    `${ENV.redditClientId}:${ENV.redditClientSecret}`
   ).toString("base64");
   const res = await fetch("https://www.reddit.com/api/v1/access_token", {
     method: "POST",
@@ -228,8 +228,8 @@ export async function exchangeRedditCode(code: string, redirectUri: string): Pro
 }
 
 export async function refreshRedditToken(refreshToken: string): Promise<TokenResponse> {
-  const credentials = Buffer.from(
-    `${process.env.REDDIT_CLIENT_ID}:${process.env.REDDIT_CLIENT_SECRET}`
+  const credentials2 = Buffer.from(
+    `${ENV.redditClientId}:${ENV.redditClientSecret}`
   ).toString("base64");
   const res = await fetch("https://www.reddit.com/api/v1/access_token", {
     method: "POST",
