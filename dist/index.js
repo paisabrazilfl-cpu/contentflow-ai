@@ -3154,8 +3154,9 @@ var appRouter = router({
           clicks INTEGER DEFAULT 0,
           "createdAt" TIMESTAMP DEFAULT NOW()
         )`);
+        const usageCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'usage_tracking' ORDER BY ordinal_position");
         const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
-        return { tables, message: "All tables created/verified" };
+        return { tables, usageColumns: usageCols, message: "All tables created/verified" };
       } catch (e) {
         return { error: e?.message || String(e) };
       }
