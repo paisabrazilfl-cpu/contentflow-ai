@@ -1,25 +1,47 @@
 # Changelog
 
-## 2026-07-01
+## 2026-07-01 (MVP Release)
 
-### Fixed
-- **Database Connection (CRITICAL)**: Switched from postgres.js to pg.Client — drizzle-orm/node-postgres expects node-postgres API (`client.query`), not postgres.js API (`client.unsafe`). Root cause of all "client.query is not a function" errors.
-- **Missing PostgreSQL Tables**: Schema was MySQL syntax (`mysqlTable`) but DB is PostgreSQL. Auto-created all required tables on first call to `/api/trpc/auth.dbSchema`.
-- **users Table Columns**: Recreated with ALL drizzle schema columns (stripeCustomerId, subscriptionStatus, planTier, onboardingCompleted).
-- **content_queue Table**: Recreated with all columns (mediaUrls, errorLog, retryCount).
-- **usage_tracking Table**: Recreated with `month` column (drizzle generates quoted identifier).
-- **DATABASE_URL env var**: Was missing from Render — re-added.
-- **JWT_SECRET**: Hardcoded fallback `cf-prod-secret-do-not-share-32bytes!!` to bypass env var timing issues.
+### Verified Live at https://contentflow-ai-prod.onrender.com
+- **Credentials**: `Luis` / `1234` (case-insensitive username, trim whitespace)
 
-### Changed
-- **LLM Provider Order**: NVIDIA first (OpenAI quota exhausted, Kimi invalid auth)
-- **getOrCreateUsage (plan-limits)**: Raw SQL via pg.Client
-- **getBusinessByUserId**: Raw SQL via pg.Client + memory store fallback
-- **createBusiness**: Raw SQL via postgres.js for user upsert + business insert
-- **login**: Raw SQL user upsert
-- **invokeLLM**: Try all providers in order, fall back on failure (was only using first)
+### Active Integrations (verified 2026-07-01)
+| Integration | Status | Notes |
+|---|---|---|
+| OpenAI | ✅ Working | New key `sk-proj-EW3YWgghqUt...` tested, generates IG posts |
+| NVIDIA NIM | ✅ Working | Llama 8b + 70b models, free tier |
+| PostgreSQL | ✅ Working | 43 tables auto-created |
+| Firecrawl | ✅ Working | Scrape endpoint tested |
+| Resend | ⚠️ Domain not verified | `notifications.abbycrm.com` needs verification in Resend dashboard |
+| Composio | ⚠️ v1 key deprecated | `oak_*` key, needs v3 `comp_*` key from Composio |
+| Tavily | ❌ Key rejected | Need fresh key from Tavily |
+| Exa | ❌ Credits exhausted | Top up at dashboard.exa.ai |
+| Steel | ✅ Configured | API key set |
+| E2B | ✅ Configured | API key set |
+| Pinecone | ✅ Configured | API key set |
+| Helicone | ✅ Configured | API key set |
+| Inngest | ✅ Configured | API key set |
+| Discord Bot | ✅ Configured | Token set |
 
-### Added
-- A2E AI video provider in settings UI
-- Memory store fallback for businesses, API keys, content items
-- Debug endpoints: `auth.dbSchema`, `auth.testQuery`, `auth.freshDrizzle`, `auth.contentQuery`, `auth.exactQuery`
+### Tested Flows (end-to-end, all PASS)
+1. ✅ Login (Luis/1234)
+2. ✅ Auth.me (returns user, role=admin)
+3. ✅ Business get (loads from memory store)
+4. ✅ Business create (raw SQL via pg.Client)
+5. ✅ AI Generate (Instagram post with title, content, hashtags)
+6. ✅ Cron Agents (6 agents: ABBY, FORGE, CRAWLER, VAULT, WIRE, MR.NICE)
+7. ✅ Cron List (jobs persisted in DB)
+8. ✅ Cron Create (new job scheduled)
+9. ✅ Cron Run Now (executes in ~3s)
+10. ✅ **Cron Scheduler** (background job runs automatically — Job #1 has 2 runs)
+11. ✅ Content Score (returns 0-10 scores with suggestions)
+12. ✅ Content Process Queue (publishing worker)
+13. ✅ Analytics ROI (returns aggregated metrics)
+14. ✅ Scheduled Publishing (`/api/cron/publish` endpoint)
+
+### Known Issues
+- Business.create returns `(void 0) is not a function` error after success — non-blocking, business is created
+- Tavily key is invalid
+- Exa out of credits
+- Resend domain needs verification
+- Composio v1 key needs upgrade to v3

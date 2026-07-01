@@ -1,17 +1,41 @@
 # ContentFlow AI
 
-AI-powered content generation and social media management platform.
+AI-powered content generation and social media management. **Live now** at https://contentflow-ai-prod.onrender.com
 
-## Live
-- **URL**: https://contentflow-ai-prod.onrender.com
-- **Credentials**: `Luis` / `1234`
+**Login**: `Luis` / `1234`
 
-## Stack
-- Node.js 20 + Express + tRPC
-- React + Vite + TailwindCSS
-- PostgreSQL (Render)
-- Docker (Render deployment)
-- Multi-provider LLM: NVIDIA NIM, OpenAI, Anthropic, Gemini, Kimi
+## Features (MVP)
+- 🎨 Multi-provider AI content generation (OpenAI, NVIDIA NIM)
+- 📅 Prompt-based scheduled jobs (6 agents: ABBY, FORGE, CRAWLER, VAULT, WIRE, MR.NICE)
+- 📱 Social platform integrations (via Composio)
+- 🔍 AI visibility tracking
+- 📊 Analytics + ROI dashboard
+- 📝 Content quality scoring
+- 🔐 JWT-based credentials auth
+- 🗃️ PostgreSQL persistence
+
+## Cron Jobs
+The system runs a background scheduler every 30s. Users can create prompt-based jobs assigned to agents:
+- **MR.NICE** posts to social media
+- **FORGE** generates content
+- **CRAWLER** researches the web
+- **VAULT** manages data
+- **WIRE** handles integrations
+- **ABBY** orchestrates the swarm
+
+Schedules: every minute → weekly Monday (8 options).
+
+## Integrations
+- **Email**: Resend (verify domain to enable)
+- **Scraping**: Firecrawl, ScrapingBee, Scrapfly, Steel
+- **Screenshots**: ScreenshotOne
+- **LLM**: OpenAI, NVIDIA NIM
+- **OAuth**: Composio (universal hub)
+- **Vector DB**: Pinecone
+- **Compute**: E2B
+- **Analytics**: Helicone
+- **Events**: Inngest
+- **Bot**: Discord
 
 ## Local Dev
 ```bash
@@ -20,10 +44,4 @@ npm run build
 npm start
 ```
 
-## Environment Variables
-See `CHANGELOG.md` for current Render env var configuration.
-
-## Tables
-Auto-created on first request via `auth.dbSchema` endpoint:
-- users, businesses, content_queue, api_keys, connected_accounts
-- analytics_logs, activity_feed, usage_tracking
+See `CHANGELOG.md` and `AI_NOTES.md` for full architecture details.
