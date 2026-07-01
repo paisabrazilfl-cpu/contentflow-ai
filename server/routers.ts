@@ -78,6 +78,27 @@ export const appRouter = router({
         return { error: e?.message || String(e), code: e?.code, hint: e?.hint };
       }
     }),
+    freshDrizzle: publicProcedure.query(async () => {
+      try {
+        const drizzleMod = await import("drizzle-orm/node-postgres");
+        const postgresMod = await import("postgres");
+        const schema = await import("../drizzle/schema");
+        const pgConn = process.env.DATABASE_URL;
+        if (!pgConn) return { error: "no_url" };
+        // Create FRESH connection
+        const client = postgresMod.default(pgConn, { ssl: false, max: 1 });
+        const db = drizzleMod.drizzle(client);
+        try {
+          // Test with the exact same drizzle call
+          const r = await db.select().from(schema.users).limit(1);
+          return { rows: r, count: r.length, success: true };
+        } finally {
+          await client.end();
+        }
+      } catch (e: any) {
+        return { error: e?.message || String(e), code: e?.code, hint: e?.hint, query: e?.query, cause: e?.cause?.message };
+      }
+    }),
     exactQuery: publicProcedure.query(async () => {
       try {
         const _pgModule = await import("postgres");
