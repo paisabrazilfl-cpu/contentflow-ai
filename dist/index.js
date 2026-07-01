@@ -2429,8 +2429,8 @@ var systemRouter = router({
 init_db();
 init_sdk();
 init_env();
-import { TRPCError as TRPCError3 } from "@trpc/server";
-import { z as z2 } from "zod";
+import { TRPCError as TRPCError4 } from "@trpc/server";
+import { z as z3 } from "zod";
 
 // server/business-analyzer.ts
 async function analyzeBusinessWebsite(websiteUrl, businessName) {
@@ -3009,9 +3009,224 @@ function composioEnabled() {
   return hasKey();
 }
 
+// server/cron-router.ts
+import { z as z2 } from "zod";
+import { TRPCError as TRPCError3 } from "@trpc/server";
+import { Client as Client3 } from "pg";
+var SCHEDULE_MINUTES = {
+  every_minute: 1,
+  every_5_min: 5,
+  every_15_min: 15,
+  every_30_min: 30,
+  every_hour: 60,
+  every_6_hours: 360,
+  daily_midnight: 1440,
+  weekly_monday: 10080
+};
+var AGENTS = [
+  { id: "ABBY", name: "ABBY", role: "Orchestrates the whole swarm" },
+  { id: "FORGE", name: "FORGE", role: "Builds & generates content" },
+  { id: "CRAWLER", name: "CRAWLER", role: "Researches & scrapes the web" },
+  { id: "VAULT", name: "VAULT", role: "Stores & manages data" },
+  { id: "WIRE", name: "WIRE", role: "Connects & integrates platforms" },
+  { id: "MR.NICE", name: "MR.NICE", role: "Posts to social media" }
+];
+var AGENT_PROMPTS = {
+  "ABBY": "You are ABBY, the orchestrator of the ContentFlow AI swarm. You coordinate other agents, set priorities, and ensure the entire content pipeline runs smoothly.",
+  "FORGE": "You are FORGE, the content creation agent. You generate blog posts, social media content, video scripts, and any text-based content. Be creative, on-brand, and engaging.",
+  "CRAWLER": "You are CRAWLER, the research agent. You gather information from the web, analyze trends, and provide insights to inform content strategy.",
+  "VAULT": "You are VAULT, the data management agent. You organize, store, and retrieve information. You handle content archives, brand assets, and historical data.",
+  "WIRE": "You are WIRE, the integration agent. You manage connections to external platforms (social media, blogs, CRMs) and ensure data flows correctly between systems.",
+  "MR.NICE": "You are MR.NICE, the social media posting agent. You craft platform-specific posts optimized for each social network and publish them on schedule."
+};
+async function getPg2() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return null;
+  const client = new Client3({ connectionString: url, ssl: false });
+  await client.connect();
+  return client;
+}
+function computeNextRun(schedule, from = /* @__PURE__ */ new Date()) {
+  const minutes = SCHEDULE_MINUTES[schedule] || 60;
+  return new Date(from.getTime() + minutes * 60 * 1e3);
+}
+var cronRouter = router({
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const pg = await getPg2();
+    if (!pg) return [];
+    try {
+      const r = await pg.query(
+        `SELECT * FROM cron_jobs WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
+        [1]
+        // Use a fixed business ID for now
+      );
+      return r.rows;
+    } finally {
+      await pg.end();
+    }
+  }),
+  create: protectedProcedure.input(z2.object({
+    name: z2.string().min(1).max(255),
+    agent: z2.enum(["ABBY", "FORGE", "CRAWLER", "VAULT", "WIRE", "MR.NICE"]),
+    schedule: z2.enum([
+      "every_minute",
+      "every_5_min",
+      "every_15_min",
+      "every_30_min",
+      "every_hour",
+      "every_6_hours",
+      "daily_midnight",
+      "weekly_monday"
+    ]),
+    prompt: z2.string().min(1).max(4e3)
+  })).mutation(async ({ ctx, input }) => {
+    const pg = await getPg2();
+    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    const nextRun = computeNextRun(input.schedule);
+    try {
+      const r = await pg.query(
+        `INSERT INTO cron_jobs ("businessId", name, agent, schedule, prompt, status, "nextRun", "totalRuns", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 0, NOW(), NOW())
+           RETURNING *`,
+        [1, input.name, input.agent, input.schedule, input.prompt, "active", nextRun]
+      );
+      return r.rows[0];
+    } finally {
+      await pg.end();
+    }
+  }),
+  toggle: protectedProcedure.input(z2.object({
+    id: z2.number(),
+    status: z2.enum(["active", "paused"])
+  })).mutation(async ({ ctx, input }) => {
+    const pg = await getPg2();
+    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    try {
+      const r = await pg.query(
+        `UPDATE cron_jobs SET status = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING *`,
+        [input.status, input.id]
+      );
+      if (r.rows.length === 0) throw new TRPCError3({ code: "NOT_FOUND" });
+      return r.rows[0];
+    } finally {
+      await pg.end();
+    }
+  }),
+  delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+    const pg = await getPg2();
+    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    try {
+      await pg.query(`DELETE FROM cron_jobs WHERE id = $1`, [input.id]);
+      return { success: true };
+    } finally {
+      await pg.end();
+    }
+  }),
+  runNow: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+    const pg = await getPg2();
+    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    try {
+      const jobR = await pg.query(`SELECT * FROM cron_jobs WHERE id = $1`, [input.id]);
+      if (jobR.rows.length === 0) throw new TRPCError3({ code: "NOT_FOUND" });
+      const job = jobR.rows[0];
+      const result = await runCronJob(job);
+      const nextRun = computeNextRun(job.schedule);
+      const updateR = await pg.query(
+        `UPDATE cron_jobs
+           SET "lastRun" = NOW(), "nextRun" = $1, "totalRuns" = "totalRuns" + 1, "lastResult" = $2, "updatedAt" = NOW()
+           WHERE id = $3
+           RETURNING *`,
+        [nextRun, JSON.stringify(result), input.id]
+      );
+      return updateR.rows[0];
+    } finally {
+      await pg.end();
+    }
+  }),
+  agents: publicProcedure.query(() => AGENTS)
+});
+async function runCronJob(job) {
+  const agentPersona = AGENT_PROMPTS[job.agent] || AGENT_PROMPTS["ABBY"];
+  try {
+    const completion = await invokeLLM({
+      messages: [
+        { role: "system", content: agentPersona },
+        { role: "user", content: `TASK: ${job.prompt}
+
+Please execute this task and return a structured response.` }
+      ],
+      maxTokens: 2048
+    });
+    const resultText = completion?.choices?.[0]?.message?.content || "No response";
+    if (job.agent === "MR.NICE" || /post|publish|share/i.test(job.prompt)) {
+      try {
+        const pg = await getPg2();
+        if (pg) {
+          const platformMatch = job.prompt.match(/instagram|facebook|tiktok|linkedin|twitter|reddit|google business|wordpress/i);
+          const platform = platformMatch ? platformMatch[0].toLowerCase().replace(/\s+/g, "") : "instagram";
+          await pg.query(
+            `INSERT INTO content_queue ("businessId", platform, "contentType", title, content, status, "createdAt", "updatedAt")
+             VALUES ($1, $2, 'social', $3, $4, 'pending', NOW(), NOW())`,
+            [1, platform, `Auto: ${job.name}`, resultText.slice(0, 5e3)]
+          );
+          await pg.end();
+        }
+      } catch (e) {
+        console.warn("[Cron] Failed to save content:", String(e));
+      }
+    }
+    return {
+      success: true,
+      agent: job.agent,
+      response: resultText.slice(0, 2e3),
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  } catch (e) {
+    return {
+      success: false,
+      agent: job.agent,
+      error: e?.message || String(e),
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  }
+}
+var schedulerStarted = false;
+function startCronScheduler() {
+  if (schedulerStarted) return;
+  schedulerStarted = true;
+  console.log("[Cron] Scheduler started");
+  setInterval(async () => {
+    const pg = await getPg2();
+    if (!pg) return;
+    try {
+      const r = await pg.query(
+        `SELECT * FROM cron_jobs WHERE status = 'active' AND "nextRun" <= NOW() LIMIT 10`
+      );
+      for (const job of r.rows) {
+        try {
+          const result = await runCronJob(job);
+          const nextRun = computeNextRun(job.schedule);
+          await pg.query(
+            `UPDATE cron_jobs SET "lastRun" = NOW(), "nextRun" = $1, "totalRuns" = "totalRuns" + 1, "lastResult" = $2, "updatedAt" = NOW() WHERE id = $3`,
+            [nextRun, JSON.stringify(result), job.id]
+          );
+          console.log(`[Cron] Ran job ${job.id} (${job.name}) \u2192 ${result.success ? "ok" : "err"}`);
+        } catch (e) {
+          console.error(`[Cron] Job ${job.id} failed:`, e);
+        }
+      }
+    } catch (e) {
+      console.error("[Cron] Scheduler error:", e);
+    } finally {
+      await pg.end();
+    }
+  }, 3e4);
+}
+
 // server/routers.ts
 var appRouter = router({
   system: systemRouter,
+  cronJobs: cronRouter,
   auth: router({
     // DEBUG endpoint - shows exactly what server sees
     debug: publicProcedure.query(async ({ ctx }) => {
@@ -3293,6 +3508,25 @@ var appRouter = router({
         const usageCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'usage_tracking' ORDER BY ordinal_position");
         const contentCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'content_queue' ORDER BY ordinal_position");
         const userCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position");
+        try {
+          await pool.unsafe(`DROP TABLE IF EXISTS cron_jobs CASCADE`);
+        } catch {
+        }
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS cron_jobs (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          agent VARCHAR(64) NOT NULL,
+          schedule VARCHAR(64) NOT NULL,
+          prompt TEXT NOT NULL,
+          status VARCHAR(20) DEFAULT 'active',
+          "lastRun" TIMESTAMP,
+          "nextRun" TIMESTAMP,
+          "totalRuns" INTEGER DEFAULT 0,
+          "lastResult" JSONB,
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
         const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
         return { tables, usageColumns: usageCols, contentColumns: contentCols, userColumns: userCols, message: "All tables created/verified" };
       } catch (e) {
@@ -3300,9 +3534,9 @@ var appRouter = router({
       }
     }),
     me: publicProcedure.query((opts) => opts.ctx.user),
-    login: publicProcedure.input(z2.object({ username: z2.string(), password: z2.string() })).mutation(async ({ ctx, input }) => {
+    login: publicProcedure.input(z3.object({ username: z3.string(), password: z3.string() })).mutation(async ({ ctx, input }) => {
       if (input.username.trim().toLowerCase() !== "luis" || input.password.trim() !== "1234") {
-        throw new TRPCError3({ code: "UNAUTHORIZED", message: "Invalid credentials" });
+        throw new TRPCError4({ code: "UNAUTHORIZED", message: "Invalid credentials" });
       }
       const openId = "user_luis";
       const name = "Luis";
@@ -3338,18 +3572,18 @@ var appRouter = router({
     get: protectedProcedure.query(async ({ ctx }) => {
       return getBusinessByUserId(ctx.user.id);
     }),
-    create: protectedProcedure.input(z2.object({
-      name: z2.string().min(1),
-      industry: z2.string().optional(),
-      targetAudience: z2.string().optional(),
-      toneOfVoice: z2.string().optional(),
-      websiteUrl: z2.string().optional(),
-      description: z2.string().optional(),
-      timezone: z2.string().optional(),
-      topicClusters: z2.any().optional(),
-      postingSchedule: z2.any().optional(),
-      contentTypes: z2.any().optional(),
-      autoApprove: z2.boolean().optional()
+    create: protectedProcedure.input(z3.object({
+      name: z3.string().min(1),
+      industry: z3.string().optional(),
+      targetAudience: z3.string().optional(),
+      toneOfVoice: z3.string().optional(),
+      websiteUrl: z3.string().optional(),
+      description: z3.string().optional(),
+      timezone: z3.string().optional(),
+      topicClusters: z3.any().optional(),
+      postingSchedule: z3.any().optional(),
+      contentTypes: z3.any().optional(),
+      autoApprove: z3.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
       try {
         const postgres = (await import("postgres")).default;
@@ -3394,7 +3628,7 @@ var appRouter = router({
         }
       } catch (e) {
         console.error("[Business.create] FAILED:", e?.message || String(e));
-        throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: e?.message || String(e) });
+        throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: e?.message || String(e) });
       }
       if (ctx.user.email) {
         sendWelcomeEmail(ctx.user.email, input.name).catch(() => {
@@ -3402,29 +3636,29 @@ var appRouter = router({
       }
       return { success: true };
     }),
-    update: protectedProcedure.input(z2.object({
-      id: z2.number(),
-      name: z2.string().optional(),
-      industry: z2.string().optional(),
-      targetAudience: z2.string().optional(),
-      toneOfVoice: z2.string().optional(),
-      websiteUrl: z2.string().optional(),
-      description: z2.string().optional(),
-      topicClusters: z2.any().optional(),
-      contentTypes: z2.any().optional(),
-      postingSchedule: z2.any().optional(),
-      autoApprove: z2.boolean().optional()
+    update: protectedProcedure.input(z3.object({
+      id: z3.number(),
+      name: z3.string().optional(),
+      industry: z3.string().optional(),
+      targetAudience: z3.string().optional(),
+      toneOfVoice: z3.string().optional(),
+      websiteUrl: z3.string().optional(),
+      description: z3.string().optional(),
+      topicClusters: z3.any().optional(),
+      contentTypes: z3.any().optional(),
+      postingSchedule: z3.any().optional(),
+      autoApprove: z3.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business || business.id !== id) throw new TRPCError3({ code: "FORBIDDEN" });
+      if (!business || business.id !== id) throw new TRPCError4({ code: "FORBIDDEN" });
       await updateBusiness(id, data);
       return { success: true };
     }),
     // Business Analyzer — uses LLM to analyze website and generate content strategy
-    analyze: protectedProcedure.input(z2.object({
-      websiteUrl: z2.string().min(1),
-      businessName: z2.string().min(1)
+    analyze: protectedProcedure.input(z3.object({
+      websiteUrl: z3.string().min(1),
+      businessName: z3.string().min(1)
     })).mutation(async ({ ctx, input }) => {
       const analysis = await analyzeBusinessWebsite(input.websiteUrl, input.businessName);
       return analysis;
@@ -3437,21 +3671,21 @@ var appRouter = router({
       if (!business) return [];
       return getConnectedAccounts(business.id);
     }),
-    connect: protectedProcedure.input(z2.object({
-      platform: z2.string(),
-      platformAccountId: z2.string().optional(),
-      accountName: z2.string().optional(),
-      accessToken: z2.string().optional(),
-      refreshToken: z2.string().optional()
+    connect: protectedProcedure.input(z3.object({
+      platform: z3.string(),
+      platformAccountId: z3.string().optional(),
+      accountName: z3.string().optional(),
+      accessToken: z3.string().optional(),
+      refreshToken: z3.string().optional()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND", message: "Business not found" });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND", message: "Business not found" });
       const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
-      if (!platformCheck.allowed) throw new TRPCError3({ code: "FORBIDDEN", message: platformCheck.message });
+      if (!platformCheck.allowed) throw new TRPCError4({ code: "FORBIDDEN", message: platformCheck.message });
       if (composioEnabled() && !input.accessToken) {
         const result = await initiateConnection(String(ctx.user.id), input.platform);
         if ("error" in result) {
-          throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+          throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: result.error });
         }
         await addConnectedAccount({
           businessId: business.id,
@@ -3480,67 +3714,67 @@ var appRouter = router({
       return listConnections(String(ctx.user.id));
     }),
     // Initiate OAuth via Composio
-    composioConnect: protectedProcedure.input(z2.object({
-      platform: z2.string()
+    composioConnect: protectedProcedure.input(z3.object({
+      platform: z3.string()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND", message: "Business not found" });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND", message: "Business not found" });
       const platformCheck = await canConnectPlatform(business.id, ctx.user.planTier);
-      if (!platformCheck.allowed) throw new TRPCError3({ code: "FORBIDDEN", message: platformCheck.message });
+      if (!platformCheck.allowed) throw new TRPCError4({ code: "FORBIDDEN", message: platformCheck.message });
       if (!composioEnabled()) {
-        throw new TRPCError3({ code: "PRECONDITION_FAILED", message: "Composio not configured. Set COMPOSIO_API_KEY." });
+        throw new TRPCError4({ code: "PRECONDITION_FAILED", message: "Composio not configured. Set COMPOSIO_API_KEY." });
       }
       const result = await initiateConnection(String(ctx.user.id), input.platform);
       if ("error" in result) {
-        throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+        throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: result.error });
       }
       return result;
     }),
     // Check connection status after OAuth callback
-    composioStatus: protectedProcedure.input(z2.object({
-      connectionId: z2.string()
+    composioStatus: protectedProcedure.input(z3.object({
+      connectionId: z3.string()
     })).query(async ({ input }) => {
       if (!composioEnabled()) return null;
       return getConnection(input.connectionId);
     }),
     // Disconnect via Composio
-    composioDisconnect: protectedProcedure.input(z2.object({
-      connectionId: z2.string()
+    composioDisconnect: protectedProcedure.input(z3.object({
+      connectionId: z3.string()
     })).mutation(async ({ input }) => {
       if (!composioEnabled()) return { success: false };
       return { success: await disconnect(input.connectionId) };
     }),
-    disconnect: protectedProcedure.input(z2.object({
-      id: z2.number()
+    disconnect: protectedProcedure.input(z3.object({
+      id: z3.number()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND" });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
       await removeConnectedAccount(input.id, business.id);
       return { success: true };
     })
   }),
   // Content operations
   content: router({
-    queue: protectedProcedure.input(z2.object({
-      status: z2.string().optional()
+    queue: protectedProcedure.input(z3.object({
+      status: z3.string().optional()
     }).optional()).query(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) return [];
       return getContentQueue(business.id, input?.status);
     }),
-    create: protectedProcedure.input(z2.object({
-      platform: z2.string(),
-      contentType: z2.string().optional(),
-      title: z2.string().optional(),
-      content: z2.string().optional(),
-      scheduledFor: z2.string().optional()
+    create: protectedProcedure.input(z3.object({
+      platform: z3.string(),
+      contentType: z3.string().optional(),
+      title: z3.string().optional(),
+      content: z3.string().optional(),
+      scheduledFor: z3.string().optional()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND" });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
       const postCheck = await canPublishContent(business.id, ctx.user.planTier);
-      if (!postCheck.allowed) throw new TRPCError3({ code: "FORBIDDEN", message: postCheck.message });
+      if (!postCheck.allowed) throw new TRPCError4({ code: "FORBIDDEN", message: postCheck.message });
       const typeCheck = canUseContentType(input.contentType || "social", ctx.user.planTier);
-      if (!typeCheck.allowed) throw new TRPCError3({ code: "FORBIDDEN", message: typeCheck.message });
+      if (!typeCheck.allowed) throw new TRPCError4({ code: "FORBIDDEN", message: typeCheck.message });
       await createContentItem({
         businessId: business.id,
         platform: input.platform,
@@ -3552,25 +3786,25 @@ var appRouter = router({
       await incrementUsage(business.id, "postsGenerated");
       return { success: true };
     }),
-    updateStatus: protectedProcedure.input(z2.object({
-      id: z2.number(),
-      status: z2.string()
+    updateStatus: protectedProcedure.input(z3.object({
+      id: z3.number(),
+      status: z3.string()
     })).mutation(async ({ ctx, input }) => {
       await updateContentStatus(input.id, input.status);
       return { success: true };
     }),
     // AI Content Generation with quality scoring
-    generate: protectedProcedure.input(z2.object({
-      platform: z2.string(),
-      contentType: z2.string().default("social"),
-      topic: z2.string().optional()
+    generate: protectedProcedure.input(z3.object({
+      platform: z3.string(),
+      contentType: z3.string().default("social"),
+      topic: z3.string().optional()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND", message: "Business not found. Complete onboarding first." });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND", message: "Business not found. Complete onboarding first." });
       const typeCheck = canUseContentType(input.contentType, ctx.user.planTier);
-      if (!typeCheck.allowed) throw new TRPCError3({ code: "FORBIDDEN", message: typeCheck.message });
+      if (!typeCheck.allowed) throw new TRPCError4({ code: "FORBIDDEN", message: typeCheck.message });
       const postCheck = await canPublishContent(business.id, ctx.user.planTier);
-      if (!postCheck.allowed) throw new TRPCError3({ code: "FORBIDDEN", message: postCheck.message });
+      if (!postCheck.allowed) throw new TRPCError4({ code: "FORBIDDEN", message: postCheck.message });
       const generated = await generateContent({
         platform: input.platform,
         contentType: input.contentType,
@@ -3606,20 +3840,20 @@ var appRouter = router({
       return { ...generated, qualityScore };
     }),
     // Score existing content
-    score: protectedProcedure.input(z2.object({
-      content: z2.string(),
-      title: z2.string(),
-      platform: z2.string()
+    score: protectedProcedure.input(z3.object({
+      content: z3.string(),
+      title: z3.string(),
+      platform: z3.string()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND" });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
       const recentTitles = await getRecentTitles(business.id);
       return scoreContent(input.content, input.title, input.platform, business.toneOfVoice || "", business.targetAudience || "", recentTitles);
     }),
     // Publishing worker
     processQueue: protectedProcedure.mutation(async ({ ctx }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND" });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
       return runPublishingWorker(business.id);
     }),
     runWorkerAll: adminProcedure.mutation(async () => {
@@ -3630,7 +3864,7 @@ var appRouter = router({
   visibility: router({
     check: protectedProcedure.mutation(async ({ ctx }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND" });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
       const keywords = business.topicClusters || [];
       const result = await checkAIVisibility(
         business.name,
@@ -3707,13 +3941,13 @@ var appRouter = router({
       if (!business) return [];
       return getApiKeys(business.id);
     }),
-    save: protectedProcedure.input(z2.object({
-      keyName: z2.string(),
-      keyValue: z2.string(),
-      provider: z2.string()
+    save: protectedProcedure.input(z3.object({
+      keyName: z3.string(),
+      keyValue: z3.string(),
+      provider: z3.string()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) throw new TRPCError3({ code: "NOT_FOUND" });
+      if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
       await saveApiKey({ ...input, businessId: business.id });
       return { success: true };
     })
@@ -4035,6 +4269,7 @@ async function startServer() {
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
+  startCronScheduler();
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });

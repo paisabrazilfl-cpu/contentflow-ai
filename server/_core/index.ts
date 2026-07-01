@@ -8,6 +8,7 @@ import { registerStripeRoutes } from "../stripe-routes";
 import { registerCronRoutes } from "../scheduling-engine";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
+import { startCronScheduler } from "../cron-router";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -67,6 +68,9 @@ async function startServer() {
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
+
+  // Start the cron scheduler (runs every 30s, executes due user-defined jobs)
+  startCronScheduler();
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);

@@ -7,12 +7,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Key, Users, Bell, Webhook, Download, Plus, Eye, EyeOff, Trash2, Copy, Save, Loader2, Inbox
+  Key, Users, Bell, Webhook, Download, Plus, Eye, EyeOff, Trash2, Copy, Save, Loader2, Inbox, Clock, Play, Pause, Bot, Zap
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CronJobsTab } from "@/components/CronJobsTab";
 
 const API_KEY_PROVIDERS = [
   { provider: "OpenAI", keyName: "OPENAI_API_KEY", description: "Used for GPT-based content generation" },
@@ -22,6 +23,8 @@ const API_KEY_PROVIDERS = [
   { provider: "TikTok", keyName: "TIKTOK_CLIENT_KEY", description: "TikTok for Business OAuth" },
   { provider: "Reddit", keyName: "REDDIT_CLIENT_ID", description: "Reddit OAuth" },
   { provider: "Stripe", keyName: "STRIPE_SECRET_KEY", description: "Payment processing" },
+  { provider: "Composio", keyName: "COMPOSIO_API_KEY", description: "Universal OAuth hub (Google, Meta, TikTok, Reddit, etc.)" },
+  { provider: "A2E AI", keyName: "A2E_API_KEY", description: "AI video generation provider" },
 ];
 
 export default function Settings() {
@@ -85,6 +88,9 @@ export default function Settings() {
           <TabsList className="bg-secondary border border-border">
             <TabsTrigger value="apikeys" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
               <Key className="w-4 h-4 mr-2" /> API Keys
+            </TabsTrigger>
+            <TabsTrigger value="cron" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+              <Clock className="w-4 h-4 mr-2" /> Scheduled Jobs
             </TabsTrigger>
             <TabsTrigger value="team" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
               <Users className="w-4 h-4 mr-2" /> Team
@@ -198,6 +204,11 @@ export default function Settings() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Cron Jobs Tab */}
+          <TabsContent value="cron" className="space-y-4">
+            <CronJobsTab />
           </TabsContent>
 
           {/* Team Tab */}

@@ -16,9 +16,11 @@ import { sendWelcomeEmail } from "./email-system";
 import * as memoryStore from "./memory-store";
 import { canConnectPlatform, canPublishContent, canUseContentType, canUseFeature, getOrCreateUsage, incrementUsage, getPlanLimits } from "./plan-limits";
 import * as composio from "./composio";
+import { cronRouter } from "./cron-router";
 
 export const appRouter = router({
   system: systemRouter,
+  cronJobs: cronRouter,
   auth: router({
     // DEBUG endpoint - shows exactly what server sees
     debug: publicProcedure.query(async ({ ctx }) => {
@@ -316,6 +318,24 @@ export const appRouter = router({
         const usageCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'usage_tracking' ORDER BY ordinal_position");
         const contentCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'content_queue' ORDER BY ordinal_position");
         const userCols = await pool.unsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position");
+        // Create cron_jobs table for user-defined scheduled tasks
+        try { await pool.unsafe(`DROP TABLE IF EXISTS cron_jobs CASCADE`); } catch {}
+        await pool.unsafe(`CREATE TABLE IF NOT EXISTS cron_jobs (
+          id SERIAL PRIMARY KEY,
+          "businessId" INTEGER NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          agent VARCHAR(64) NOT NULL,
+          schedule VARCHAR(64) NOT NULL,
+          prompt TEXT NOT NULL,
+          status VARCHAR(20) DEFAULT 'active',
+          "lastRun" TIMESTAMP,
+          "nextRun" TIMESTAMP,
+          "totalRuns" INTEGER DEFAULT 0,
+          "lastResult" JSONB,
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "updatedAt" TIMESTAMP DEFAULT NOW()
+        )`);
+
         // Check result
         const tables = await pool.unsafe("SELECT tablename FROM pg_tables WHERE schemaname='public'");
         return { tables: tables, usageColumns: usageCols, contentColumns: contentCols, userColumns: userCols, message: "All tables created/verified" };
