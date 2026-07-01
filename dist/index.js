@@ -449,23 +449,24 @@ async function getAllBusinesses() {
   }
 }
 async function getBusinessByUserId(userId) {
-  const memBiz = memoryStore.getBusinessByUserId(userId);
-  if (memBiz) return memBiz;
-  const db = await getDb();
-  if (!db) return void 0;
   try {
-    const pool = db.$client || db.session?.client;
-    if (pool && pool.unsafe) {
-      const r = await pool.unsafe(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
-      if (r && r.length > 0) return r[0];
-      return void 0;
+    const _pgModule = await import("postgres");
+    const pgConn = process.env.DATABASE_URL;
+    if (pgConn) {
+      const client = postgres(pgConn, { ssl: false });
+      try {
+        const r = await client`SELECT * FROM businesses WHERE "userId" = ${userId} ORDER BY id DESC LIMIT 1`;
+        if (r && r.length > 0) {
+          return r[0];
+        }
+      } finally {
+        await client.end();
+      }
     }
-    const result = await db.select().from(businesses).where(eq(businesses.userId, userId)).limit(1);
-    return result.length > 0 ? result[0] : void 0;
-  } catch (error) {
-    console.error("[Database] Failed to get business by userId:", error);
-    return void 0;
+  } catch (e) {
+    console.error("[DB] raw SQL getBusinessByUserId error:", String(e));
   }
+  return void 0;
 }
 async function getConnectedAccounts(businessId) {
   const db = await getDb();

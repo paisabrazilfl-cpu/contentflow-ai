@@ -128,27 +128,25 @@ export async function getAllBusinesses() {
 // TODO: add feature queries here as your schema grows.
 
 export async function getBusinessByUserId(userId: number): Promise<any> {
-  // Prefer memory store (works regardless of DB schema mismatch)
-  const memBiz = memoryStore.getBusinessByUserId(userId);
-  if (memBiz) return memBiz;
-
-  const db = await getDb();
-  if (!db) return undefined;
-
+  // Try raw SQL with postgres.js directly (drizzle schema is MySQL, DB is PostgreSQL)
   try {
-    // Use raw SQL since drizzle schema is MySQL but DB is PostgreSQL
-    const pool = (db as any).$client || (db as any).session?.client;
-    if (pool && pool.unsafe) {
-      const r = await pool.unsafe(`SELECT * FROM businesses WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`, [userId]);
-      if (r && r.length > 0) return r[0];
-      return undefined;
+    const _pgModule = await import("postgres");
+    const pgConn = process.env.DATABASE_URL;
+    if (pgConn) {
+      const client = (postgres as any)(pgConn, { ssl: false });
+      try {
+        const r = await client`SELECT * FROM businesses WHERE "userId" = ${userId} ORDER BY id DESC LIMIT 1`;
+        if (r && r.length > 0) {
+          return r[0];
+        }
+      } finally {
+        await client.end();
+      }
     }
-    const result = await db.select().from(businesses).where(eq(businesses.userId, userId)).limit(1);
-    return result.length > 0 ? result[0] : undefined;
-  } catch (error) {
-    console.error("[Database] Failed to get business by userId:", error);
-    return undefined;
+  } catch (e) {
+    console.error("[DB] raw SQL getBusinessByUserId error:", String(e));
   }
+  return undefined;
 }
 
 export async function getConnectedAccounts(businessId: number) {
