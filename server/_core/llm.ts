@@ -216,7 +216,10 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   // Build candidate list (NVIDIA first since OpenAI quota is exhausted)
   const candidates: ProviderConfig[] = [];
-  if (ENV.nvidiaKey) candidates.push({ baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: ENV.nvidiaKey, model: "meta/llama-3.1-70b-instruct" });
+  if (ENV.nvidiaKey) {
+    candidates.push({ baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: ENV.nvidiaKey, model: "meta/llama-3.1-8b-instruct" });
+    candidates.push({ baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: ENV.nvidiaKey, model: "meta/llama-3.1-70b-instruct" });
+  }
   if (ENV.openAiKey) candidates.push({ baseUrl: "https://api.openai.com/v1", apiKey: ENV.openAiKey, model: "gpt-4o-mini" });
   if (ENV.openRouterKey) candidates.push({ baseUrl: "https://openrouter.ai/api/v1", apiKey: ENV.openRouterKey, model: "meta-llama/llama-3.1-8b-instruct:free" });
   if (ENV.anthropicKey) candidates.push({ baseUrl: "https://api.anthropic.com/v1", apiKey: ENV.anthropicKey, model: "claude-3-5-sonnet-20241022" });
