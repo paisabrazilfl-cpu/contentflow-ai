@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CronJobsTab } from "@/components/CronJobsTab";
+import { ApiKeyManager } from "@/components/ApiKeyManager";
 
 const API_KEY_PROVIDERS = [
   { provider: "OpenAI", keyName: "OPENAI_API_KEY", description: "Used for GPT-based content generation" },
@@ -179,31 +180,8 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            {/* Quick reference */}
-            <Card className="bg-card border-border">
-              <CardHeader>
-                <CardTitle className="text-base">Required Keys Reference</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {API_KEY_PROVIDERS.map(p => (
-                    <div key={p.keyName} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                      <div>
-                        <p className="text-sm font-medium">{p.provider}</p>
-                        <p className="text-xs text-muted-foreground">{p.description}</p>
-                      </div>
-                      <Badge variant="outline" className={
-                        apiKeys?.some(k => k.keyName === p.keyName)
-                          ? "bg-green-500/10 text-green-400 border-green-500/20"
-                          : "bg-muted text-muted-foreground"
-                      }>
-                        {apiKeys?.some(k => k.keyName === p.keyName) ? "Configured" : "Not set"}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            {/* Interactive API key manager */}
+            <ApiKeyManager />
           </TabsContent>
 
           {/* Cron Jobs Tab */}

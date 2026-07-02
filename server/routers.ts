@@ -19,10 +19,20 @@ import * as composio from "./composio";
 import * as webSearch from "./web-search";
 import * as oauthHandlers from "./oauth-handlers";
 import { cronRouter } from "./cron-router";
+import * as apiPinger from "./api-pinger";
 
 export const appRouter = router({
   system: systemRouter,
   cronJobs: cronRouter,
+  apiPing: router({
+    list: publicProcedure.query(() => apiPinger.listProviders()),
+    ping: publicProcedure.input(z.object({
+      providerId: z.string(),
+      key: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      return apiPinger.pingProvider(input.providerId, input.key);
+    }),
+  }),
   auth: router({
     // DEBUG endpoint - shows exactly what server sees
     debug: publicProcedure.query(async ({ ctx }) => {
