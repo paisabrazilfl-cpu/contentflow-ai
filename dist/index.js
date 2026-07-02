@@ -4576,9 +4576,15 @@ var appRouter = router({
         throw new TRPCError4({ code: "NOT_FOUND", message: `Unknown platform: ${input.platform}` });
       }
       if (!isPlatformConfigured(input.platform)) {
+        if (composioEnabled()) {
+          const result = await initiateConnection(String(ctx.user.id), input.platform);
+          if ("redirectUrl" in result && result.redirectUrl) {
+            return result;
+          }
+        }
         throw new TRPCError4({
           code: "PRECONDITION_FAILED",
-          message: `${config.name} OAuth not configured. Set ${config.clientIdEnv} and ${config.clientSecretEnv} in env vars.`
+          message: `${config.name} OAuth not configured. Add credentials via Settings \u2192 API Keys (or set ${config.clientIdEnv} + ${config.clientSecretEnv} in Render env vars). Try Composio-managed auth instead.`
         });
       }
       const crypto = await import("crypto");

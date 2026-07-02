@@ -607,9 +607,16 @@ export const appRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: `Unknown platform: ${input.platform}` });
       }
       if (!oauthHandlers.isPlatformConfigured(input.platform)) {
+        // Try Composio v3 as fallback before giving up
+        if (composio.composioEnabled()) {
+          const result = await composio.initiateConnection(String(ctx.user.id), input.platform);
+          if ("redirectUrl" in result && result.redirectUrl) {
+            return result;
+          }
+        }
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
-          message: `${config.name} OAuth not configured. Set ${config.clientIdEnv} and ${config.clientSecretEnv} in env vars.`
+          message: `${config.name} OAuth not configured. Add credentials via Settings → API Keys (or set ${config.clientIdEnv} + ${config.clientSecretEnv} in Render env vars). Try Composio-managed auth instead.`
         });
       }
 
