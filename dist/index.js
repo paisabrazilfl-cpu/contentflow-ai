@@ -3120,6 +3120,22 @@ async function composioFetch(path3, init) {
   }
   return data;
 }
+async function listConnections(userId) {
+  if (!composioEnabled()) return [];
+  const data = await composioFetch(`/connected_accounts?user_id=${encodeURIComponent(userId)}&limit=100`);
+  if (data?.error) {
+    console.warn("[Composio] listConnections error:", data.error);
+    return [];
+  }
+  const items = data?.items || [];
+  return items.map((c) => ({
+    id: c.id || c.uuid || c.nanoid,
+    toolkit: c.toolkit?.slug || c.toolkit_slug || "",
+    status: normalizeStatus(c.status),
+    accountId: c.account_id || c.id,
+    accountName: c.account_name || c.toolkit?.name || c.toolkit_slug
+  }));
+}
 function normalizeStatus(s) {
   if (!s) return "active";
   const lower = String(s).toUpperCase();
@@ -3190,6 +3206,12 @@ async function disconnect(connectionId) {
   });
   if (data?.error) return false;
   return true;
+}
+async function listToolkits() {
+  if (!composioEnabled()) return [];
+  const data = await composioFetch(`/toolkits?limit=100`);
+  if (data?.error) return [];
+  return data.items || [];
 }
 async function listAuthConfigs() {
   if (!composioEnabled()) return [];
@@ -5495,33 +5517,90 @@ var appRouter = router({
       });
       return { success: true };
     }),
-    // List Composio-connected accounts
+    // List Composio-connected accounts + auth configs
     composioList: protectedProcedure.query(async ({ ctx }) => {
       const business = await getBusinessByUserId(ctx.user.id);
-      if (!business) return listAvailablePlatforms();
       const platforms = listAvailablePlatforms();
-      const client = new (await import("pg")).Client({
-        connectionString: process.env.DATABASE_URL,
-        ssl: false
-      });
-      await client.connect();
-      try {
-        const r = await client.query(
-          `SELECT platform, "accountName", "platformAccountId", status, "expiresAt", "updatedAt"
-           FROM connected_accounts WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
-          [business.id]
-        );
-        const connections = r.rows;
-        return platforms.map((p) => ({
-          ...p,
-          connections: connections.filter((c) => c.platform === p.id)
-        }));
-      } catch (e) {
-        console.warn("[composioList] error:", String(e));
-        return platforms;
-      } finally {
-        await client.end();
+      let composioAuthConfigs = [];
+      let composioToolkits = [];
+      let composioConnected = [];
+      if (composioEnabled()) {
+        const [configsRes, toolkitsRes, connectedRes] = await Promise.allSettled([
+          listAuthConfigs(),
+          listToolkits(),
+          listConnections(String(ctx.user.id))
+        ]);
+        if (configsRes.status === "fulfilled") composioAuthConfigs = configsRes.value || [];
+        if (toolkitsRes.status === "fulfilled") composioToolkits = toolkitsRes.value || [];
+        if (connectedRes.status === "fulfilled") composioConnected = connectedRes.value || [];
       }
+      let dbConnections = [];
+      if (business) {
+        try {
+          const client = new (await import("pg")).Client({
+            connectionString: process.env.DATABASE_URL,
+            ssl: false
+          });
+          await client.connect();
+          try {
+            const r = await client.query(
+              `SELECT platform, "accountName", "platformAccountId", status, "expiresAt", "updatedAt"
+               FROM connected_accounts WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
+              [business.id]
+            );
+            dbConnections = r.rows;
+          } finally {
+            await client.end();
+          }
+        } catch (e) {
+          console.warn("[composioList] db error:", String(e));
+        }
+      }
+      const directPlatforms = platforms.map((p) => ({
+        ...p,
+        provider: "direct_oauth",
+        connections: dbConnections.filter((c) => c.platform === p.id)
+      }));
+      const authConfigBySlug = /* @__PURE__ */ new Map();
+      for (const c of composioAuthConfigs) {
+        const slug = c.toolkit?.slug;
+        if (slug) authConfigBySlug.set(slug, c);
+      }
+      const composioPlatforms = composioToolkits.filter((t2) => authConfigBySlug.has(t2.slug)).map((t2) => ({
+        id: t2.slug,
+        name: t2.name || t2.slug,
+        description: t2.meta?.description || `${t2.meta?.tools_count || 0} tools available`,
+        emoji: (t2.slug || "").charAt(0).toUpperCase(),
+        color: "text-primary",
+        bg: "bg-primary/10",
+        border: "border-primary/20",
+        configured: true,
+        provider: "composio",
+        authConfigId: authConfigBySlug.get(t2.slug)?.id,
+        toolkitSlug: t2.slug,
+        toolsCount: t2.meta?.tools_count || 0,
+        connections: composioConnected.filter((c) => c.toolkit === t2.slug)
+      }));
+      return {
+        directPlatforms,
+        composioPlatforms,
+        composioEnabled: composioEnabled(),
+        composioAuthConfigsCount: composioAuthConfigs.length,
+        composioToolkitsCount: composioToolkits.length
+      };
+    }),
+    // List just the Composio auth configs (for the Connections dropdown)
+    composioAuthConfigs: protectedProcedure.query(async () => {
+      if (!composioEnabled()) {
+        return { enabled: false, authConfigs: [], toolkits: [] };
+      }
+      const [configsRes, toolkitsRes] = await Promise.allSettled([
+        listAuthConfigs(),
+        listToolkits()
+      ]);
+      const authConfigs = configsRes.status === "fulfilled" ? configsRes.value : [];
+      const toolkits = toolkitsRes.status === "fulfilled" ? toolkitsRes.value : [];
+      return { enabled: true, authConfigs, toolkits };
     }),
     // Initiate OAuth via our direct handlers (no Composio)
     composioConnect: protectedProcedure.input(z4.object({

@@ -564,35 +564,103 @@ export const appRouter = router({
       return { success: true };
     }),
 
-    // List Composio-connected accounts
+    // List Composio-connected accounts + auth configs
     composioList: protectedProcedure.query(async ({ ctx }) => {
-      // Use direct OAuth handlers (no Composio needed)
       const business = await db.getBusinessByUserId(ctx.user.id);
-      if (!business) return oauthHandlers.listAvailablePlatforms();
-      // Return available platforms + their configured status
       const platforms = oauthHandlers.listAvailablePlatforms();
-      // Get existing connections for this business
-      const client = new (await import("pg")).Client({
-        connectionString: process.env.DATABASE_URL, ssl: false,
-      });
-      await client.connect();
-      try {
-        const r = await client.query(
-          `SELECT platform, "accountName", "platformAccountId", status, "expiresAt", "updatedAt"
-           FROM connected_accounts WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
-          [business.id]
-        );
-        const connections = r.rows;
-        return platforms.map(p => ({
-          ...p,
-          connections: connections.filter((c: any) => c.platform === p.id),
-        }));
-      } catch (e) {
-        console.warn("[composioList] error:", String(e));
-        return platforms;
-      } finally {
-        await client.end();
+
+      // If Composio is enabled, also return its auth configs and toolkits
+      let composioAuthConfigs: any[] = [];
+      let composioToolkits: any[] = [];
+      let composioConnected: any[] = [];
+
+      if (composio.composioEnabled()) {
+        const [configsRes, toolkitsRes, connectedRes] = await Promise.allSettled([
+          composio.listAuthConfigs(),
+          composio.listToolkits(),
+          composio.listConnections(String(ctx.user.id)),
+        ]);
+        if (configsRes.status === "fulfilled") composioAuthConfigs = configsRes.value || [];
+        if (toolkitsRes.status === "fulfilled") composioToolkits = toolkitsRes.value || [];
+        if (connectedRes.status === "fulfilled") composioConnected = connectedRes.value || [];
       }
+
+      // Get existing connections from DB
+      let dbConnections: any[] = [];
+      if (business) {
+        try {
+          const client = new (await import("pg")).Client({
+            connectionString: process.env.DATABASE_URL, ssl: false,
+          });
+          await client.connect();
+          try {
+            const r = await client.query(
+              `SELECT platform, "accountName", "platformAccountId", status, "expiresAt", "updatedAt"
+               FROM connected_accounts WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
+              [business.id]
+            );
+            dbConnections = r.rows;
+          } finally {
+            await client.end();
+          }
+        } catch (e) {
+          console.warn("[composioList] db error:", String(e));
+        }
+      }
+
+      // Build merged list: direct OAuth platforms + Composio toolkits with auth configs
+      const directPlatforms = platforms.map(p => ({
+        ...p,
+        provider: "direct_oauth",
+        connections: dbConnections.filter((c: any) => c.platform === p.id),
+      }));
+
+      // Composio platforms = toolkits that have an auth_config
+      const authConfigBySlug = new Map<string, any>();
+      for (const c of composioAuthConfigs) {
+        const slug = c.toolkit?.slug;
+        if (slug) authConfigBySlug.set(slug, c);
+      }
+
+      const composioPlatforms = composioToolkits
+        .filter((t: any) => authConfigBySlug.has(t.slug))
+        .map((t: any) => ({
+          id: t.slug,
+          name: t.name || t.slug,
+          description: t.meta?.description || `${t.meta?.tools_count || 0} tools available`,
+          emoji: (t.slug || "").charAt(0).toUpperCase(),
+          color: "text-primary",
+          bg: "bg-primary/10",
+          border: "border-primary/20",
+          configured: true,
+          provider: "composio",
+          authConfigId: authConfigBySlug.get(t.slug)?.id,
+          toolkitSlug: t.slug,
+          toolsCount: t.meta?.tools_count || 0,
+          connections: composioConnected.filter((c: any) => c.toolkit === t.slug),
+        }));
+
+      return {
+        directPlatforms,
+        composioPlatforms,
+        composioEnabled: composio.composioEnabled(),
+        composioAuthConfigsCount: composioAuthConfigs.length,
+        composioToolkitsCount: composioToolkits.length,
+      };
+    }),
+
+    // List just the Composio auth configs (for the Connections dropdown)
+    composioAuthConfigs: protectedProcedure.query(async () => {
+      if (!composio.composioEnabled()) {
+        return { enabled: false, authConfigs: [], toolkits: [] };
+      }
+      const [configsRes, toolkitsRes] = await Promise.allSettled([
+        composio.listAuthConfigs(),
+        composio.listToolkits(),
+      ]);
+      const authConfigs = configsRes.status === "fulfilled" ? configsRes.value : [];
+      const toolkits = toolkitsRes.status === "fulfilled" ? toolkitsRes.value : [];
+      return { enabled: true, authConfigs, toolkits };
     }),
 
     // Initiate OAuth via our direct handlers (no Composio)
