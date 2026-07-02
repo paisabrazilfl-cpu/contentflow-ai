@@ -149,7 +149,7 @@ export default function Connections() {
     <div className="px-2 md:px-0 max-w-5xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-xl md:text-2xl font-bold text-foreground">Connected Platforms</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">Connected Platforms <span className="text-xs text-muted-foreground font-normal">v2.0</span></h1>
         <p className="text-muted-foreground text-xs md:text-sm mt-1">
           Connect your social media accounts to start publishing AI-generated content automatically.
         </p>
