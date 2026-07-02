@@ -3064,7 +3064,7 @@ function canUseContentType(contentType, planTier) {
 
 // server/composio.ts
 init_env();
-var COMPOSIO_BASE = "https://backend.composio.dev/api/v1";
+var COMPOSIO_BASE = "https://backend.composio.dev/api/v3";
 var PLATFORM_TO_TOOLKIT = {
   google: "googlebusiness",
   google_business: "googlebusiness",
@@ -3089,87 +3089,113 @@ var composioAuth = () => ({
   "content-type": "application/json",
   "x-api-key": ENV.composioKey || ""
 });
-function hasKey() {
+function composioEnabled() {
   return !!ENV.composioKey && ENV.composioKey.length > 0;
 }
-async function initiateConnection(userId, platform) {
-  if (!hasKey()) return { error: "COMPOSIO_API_KEY not configured" };
-  const toolkit = PLATFORM_TO_TOOLKIT[platform.toLowerCase()];
-  if (!toolkit) return { error: `Unknown platform: ${platform}` };
-  try {
-    const cfgRes = await fetch(`${COMPOSIO_BASE}/auth_configs`, {
-      method: "GET",
-      headers: composioAuth()
-    });
-    if (!cfgRes.ok) return { error: `Composio auth_configs failed: ${await cfgRes.text()}` };
-    const cfgs = await cfgRes.json();
-    let authConfigId = cfgs.items?.find((c) => c.toolkit?.toLowerCase() === toolkit)?.id;
-    if (!authConfigId) {
-      const createRes = await fetch(`${COMPOSIO_BASE}/auth_configs`, {
-        method: "POST",
-        headers: composioAuth(),
-        body: JSON.stringify({
-          toolkit: { slug: toolkit },
-          authScheme: "OAUTH2",
-          name: `contentflow-${toolkit}`
-        })
-      });
-      if (!createRes.ok) return { error: `Composio create auth_config failed: ${await createRes.text()}` };
-      const created = await createRes.json();
-      authConfigId = created.id;
+async function composioFetch(path3, init) {
+  if (!composioEnabled()) {
+    return { error: "Composio not configured. Set COMPOSIO_API_KEY in env." };
+  }
+  const url = `${COMPOSIO_BASE}${path3}`;
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      ...composioAuth(),
+      ...init?.headers || {}
     }
-    const connRes = await fetch(`${COMPOSIO_BASE}/connected_accounts`, {
+  });
+  const text2 = await res.text();
+  let data;
+  try {
+    data = text2 ? JSON.parse(text2) : {};
+  } catch {
+    data = { raw: text2 };
+  }
+  if (!res.ok) {
+    return {
+      error: data?.error?.message || data?.message || text2 || `HTTP ${res.status}`,
+      status: res.status,
+      response: data
+    };
+  }
+  return data;
+}
+function normalizeStatus(s) {
+  if (!s) return "active";
+  const lower = String(s).toUpperCase();
+  if (["ACTIVE", "CONNECTED", "ENABLED"].includes(lower)) return "active";
+  if (["INITIALIZING", "PENDING", "INITIATED"].includes(lower)) return "pending";
+  if (["FAILED", "ERROR"].includes(lower)) return "failed";
+  return "active";
+}
+async function initiateConnection(userId, platform) {
+  if (!composioEnabled()) {
+    return { error: "Composio not configured" };
+  }
+  const toolkitSlug = PLATFORM_TO_TOOLKIT[platform] || platform;
+  const authConfigs = await listAuthConfigs();
+  const matchingConfig = authConfigs.find(
+    (c) => c.toolkit?.slug === toolkitSlug && c.status === "ENABLED"
+  );
+  if (!matchingConfig) {
+    return {
+      error: `No auth config found for ${toolkitSlug}. Create one in your Composio dashboard (https://dashboard.composio.dev) and try again. Toolkits found: ${authConfigs.map((c) => c.toolkit?.slug).filter(Boolean).join(", ") || "none"}.`
+    };
+  }
+  const data = await composioFetch(`/connected_accounts/link`, {
+    method: "POST",
+    body: JSON.stringify({
+      auth_config_id: matchingConfig.id,
+      user_id: userId,
+      callback_url: process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/api/oauth/callback` : void 0
+    })
+  });
+  if (data?.error) {
+    const legacy = await composioFetch(`/connected_accounts`, {
       method: "POST",
-      headers: composioAuth(),
       body: JSON.stringify({
-        authConfig: { id: authConfigId },
-        userId,
-        callbackUrl: `${process.env.VITE_APP_URL || "https://contentflow-ai-prod.onrender.com"}/platforms?connected=1`
+        auth_config: { id: matchingConfig.id },
+        connection: {}
       })
     });
-    if (!connRes.ok) return { error: `Composio initiate connection failed: ${await connRes.text()}` };
-    const conn = await connRes.json();
+    if (legacy?.error) {
+      return { error: `Both /link and legacy /connected_accounts failed. /link: ${data.error}. Legacy: ${legacy.error}` };
+    }
     return {
-      redirectUrl: conn.redirectUrl || "",
-      connectionId: conn.id
+      redirectUrl: legacy.redirect_url || legacy.redirect_uri || "",
+      connectionId: legacy.id || legacy.nanoid
     };
-  } catch (err) {
-    return { error: `Composio request failed: ${String(err)}` };
   }
+  return {
+    redirectUrl: data.redirect_url || data.redirect_uri || "",
+    connectionId: data.id || data.connection_id || data.nanoid
+  };
 }
 async function getConnection(connectionId) {
-  if (!hasKey()) return null;
-  try {
-    const res = await fetch(`${COMPOSIO_BASE}/connected_accounts/${connectionId}`, {
-      headers: composioAuth()
-    });
-    if (!res.ok) return null;
-    const item = await res.json();
-    return {
-      id: item.id,
-      toolkit: item.toolkit?.slug || item.authConfig?.toolkit?.slug || "",
-      status: item.status === "ACTIVE" ? "active" : item.status === "INITIATED" ? "pending" : "failed",
-      accountId: item.params?.id,
-      accountName: item.params?.name || item.params?.email
-    };
-  } catch {
-    return null;
-  }
+  if (!composioEnabled()) return null;
+  const data = await composioFetch(`/connected_accounts/${encodeURIComponent(connectionId)}`);
+  if (data?.error) return null;
+  return {
+    id: data.id || data.nanoid || connectionId,
+    toolkit: data.toolkit?.slug || "",
+    status: normalizeStatus(data.status),
+    accountId: data.id,
+    accountName: data.account_name || data.toolkit?.name
+  };
 }
 async function disconnect(connectionId) {
-  if (!hasKey()) return false;
-  try {
-    const res = await fetch(`${COMPOSIO_BASE}/connected_accounts/${connectionId}`, {
-      method: "DELETE",
-      headers: composioAuth()
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+  if (!composioEnabled()) return false;
+  const data = await composioFetch(`/connected_accounts/${encodeURIComponent(connectionId)}`, {
+    method: "DELETE"
+  });
+  if (data?.error) return false;
+  return true;
 }
-function composioEnabled() {
-  return hasKey();
+async function listAuthConfigs() {
+  if (!composioEnabled()) return [];
+  const data = await composioFetch(`/auth_configs?limit=100`);
+  if (data?.error) return [];
+  return data.items || [];
 }
 
 // server/oauth-handlers.ts

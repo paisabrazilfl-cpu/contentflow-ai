@@ -122,7 +122,12 @@ function normalizeStatus(s: any): ComposioConnection["status"] {
 
 /**
  * Initiate OAuth connection for a platform.
- * v3: POST /api/v3/connected_accounts
+ * v3: POST /api/v3/connected_accounts/link (new way for OAuth)
+ *      POST /api/v3/connected_accounts (for non-OAuth schemes)
+ *
+ * For OAuth, we need an auth_config_id. We look for an existing
+ * auth_config for the toolkit, or return an error telling the user
+ * to create one in their Composio dashboard.
  */
 export async function initiateConnection(
   userId: string,
@@ -134,28 +139,51 @@ export async function initiateConnection(
 
   const toolkitSlug = PLATFORM_TO_TOOLKIT[platform] || platform;
 
-  // v3 endpoint: POST /api/v3/connected_accounts
-  // Body needs: auth_config, user_id, callback_url (optional)
-  const body = {
-    user_id: userId,
-    toolkit: { slug: toolkitSlug },
-  };
+  // 1) Find an existing auth_config for this toolkit
+  const authConfigs = await listAuthConfigs();
+  const matchingConfig = authConfigs.find(
+    (c: any) => c.toolkit?.slug === toolkitSlug && c.status === "ENABLED"
+  );
 
-  // First, try to create with managed auth (composio-hosted OAuth)
-  const data = await composioFetch(`/connected_accounts`, {
+  if (!matchingConfig) {
+    return {
+      error: `No auth config found for ${toolkitSlug}. Create one in your Composio dashboard (https://dashboard.composio.dev) and try again. Toolkits found: ${authConfigs.map((c: any) => c.toolkit?.slug).filter(Boolean).join(", ") || "none"}.`,
+    };
+  }
+
+  // 2) Use the new /link endpoint for OAuth flow
+  const data = await composioFetch(`/connected_accounts/link`, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      auth_config_id: matchingConfig.id,
+      user_id: userId,
+      callback_url: process.env.APP_BASE_URL
+        ? `${process.env.APP_BASE_URL}/api/oauth/callback`
+        : undefined,
+    }),
   });
 
   if (data?.error) {
-    // Try alternative: use auth_configs first to find or create one
-    return { error: `Composio v3 init failed: ${data.error}. Try using direct OAuth handlers in oauth-handlers.ts instead.` };
+    // Try the legacy endpoint as fallback
+    const legacy = await composioFetch(`/connected_accounts`, {
+      method: "POST",
+      body: JSON.stringify({
+        auth_config: { id: matchingConfig.id },
+        connection: {},
+      }),
+    });
+    if (legacy?.error) {
+      return { error: `Both /link and legacy /connected_accounts failed. /link: ${data.error}. Legacy: ${legacy.error}` };
+    }
+    return {
+      redirectUrl: legacy.redirect_url || legacy.redirect_uri || "",
+      connectionId: legacy.id || legacy.nanoid,
+    };
   }
 
-  // v3 response: { id, status, redirect_url?, ... }
   return {
-    redirectUrl: data.redirect_url || data.redirectUrl || "",
-    connectionId: data.id || data.nanoid || data.uuid,
+    redirectUrl: data.redirect_url || data.redirect_uri || "",
+    connectionId: data.id || data.connection_id || data.nanoid,
   };
 }
 
