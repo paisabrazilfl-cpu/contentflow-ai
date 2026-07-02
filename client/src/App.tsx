@@ -13,6 +13,7 @@ import Analytics from "./pages/Analytics";
 import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
 import AdminPanel from "./pages/AdminPanel";
+import RuntimeMonitor from "./pages/RuntimeMonitor";
 import Onboarding from "./pages/Onboarding";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/billing" component={Billing} />
       <Route path="/settings" component={Settings} />
       <Route path="/admin" component={AdminPanel} />
+      <Route path="/runtime" component={RuntimeMonitor} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
