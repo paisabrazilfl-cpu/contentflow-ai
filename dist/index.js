@@ -6138,6 +6138,7 @@ function serveStatic(app) {
 
 // server/_core/index.ts
 init_env();
+var BUILD_TAG = "cf-2026-07-02-00-08";
 function isPortAvailable(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -6161,6 +6162,14 @@ async function findAvailablePort(startPort = 3e3) {
 async function startServer() {
   const app = express2();
   const server = createServer(app);
+  app.use((req, res, next) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    res.setHeader("X-Build-Tag", BUILD_TAG);
+    next();
+  });
   app.use(express2.json({ limit: "50mb" }));
   app.use(express2.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
