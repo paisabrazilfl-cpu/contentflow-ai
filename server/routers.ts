@@ -20,6 +20,7 @@ import * as webSearch from "./web-search";
 import * as oauthHandlers from "./oauth-handlers";
 import { cronRouter } from "./cron-router";
 import * as apiPinger from "./api-pinger";
+import { runtimeRouter } from "./runtime-router";
 
 export const appRouter = router({
   system: systemRouter,
@@ -33,6 +34,7 @@ export const appRouter = router({
       return apiPinger.pingProvider(input.providerId, input.key);
     }),
   }),
+  runtime: runtimeRouter,
   auth: router({
     // DEBUG endpoint - shows exactly what server sees
     debug: publicProcedure.query(async ({ ctx }) => {

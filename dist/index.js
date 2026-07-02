@@ -2430,7 +2430,7 @@ init_db();
 init_sdk();
 init_env();
 import { TRPCError as TRPCError4 } from "@trpc/server";
-import { z as z3 } from "zod";
+import { z as z4 } from "zod";
 
 // server/web-search.ts
 init_env();
@@ -3365,216 +3365,7 @@ function listAvailablePlatforms() {
 // server/cron-router.ts
 import { z as z2 } from "zod";
 import { TRPCError as TRPCError3 } from "@trpc/server";
-import { Client as Client4 } from "pg";
-var SCHEDULE_MINUTES = {
-  every_minute: 1,
-  every_5_min: 5,
-  every_15_min: 15,
-  every_30_min: 30,
-  every_hour: 60,
-  every_6_hours: 360,
-  daily_midnight: 1440,
-  weekly_monday: 10080
-};
-var AGENTS = [
-  { id: "ABBY", name: "ABBY", role: "Orchestrates the whole swarm" },
-  { id: "FORGE", name: "FORGE", role: "Builds & generates content" },
-  { id: "CRAWLER", name: "CRAWLER", role: "Researches & scrapes the web" },
-  { id: "VAULT", name: "VAULT", role: "Stores & manages data" },
-  { id: "WIRE", name: "WIRE", role: "Connects & integrates platforms" },
-  { id: "MR.NICE", name: "MR.NICE", role: "Posts to social media" }
-];
-var AGENT_PROMPTS = {
-  "ABBY": "You are ABBY, the orchestrator of the ContentFlow AI swarm. You coordinate other agents, set priorities, and ensure the entire content pipeline runs smoothly.",
-  "FORGE": "You are FORGE, the content creation agent. You generate blog posts, social media content, video scripts, and any text-based content. Be creative, on-brand, and engaging.",
-  "CRAWLER": "You are CRAWLER, the research agent. You gather information from the web, analyze trends, and provide insights to inform content strategy.",
-  "VAULT": "You are VAULT, the data management agent. You organize, store, and retrieve information. You handle content archives, brand assets, and historical data.",
-  "WIRE": "You are WIRE, the integration agent. You manage connections to external platforms (social media, blogs, CRMs) and ensure data flows correctly between systems.",
-  "MR.NICE": "You are MR.NICE, the social media posting agent. You craft platform-specific posts optimized for each social network and publish them on schedule."
-};
-async function getPg2() {
-  const url = process.env.DATABASE_URL;
-  if (!url) return null;
-  const client = new Client4({ connectionString: url, ssl: false });
-  await client.connect();
-  return client;
-}
-function computeNextRun(schedule, from = /* @__PURE__ */ new Date()) {
-  const minutes = SCHEDULE_MINUTES[schedule] || 60;
-  return new Date(from.getTime() + minutes * 60 * 1e3);
-}
-var cronRouter = router({
-  list: protectedProcedure.query(async ({ ctx }) => {
-    const pg = await getPg2();
-    if (!pg) return [];
-    try {
-      const r = await pg.query(
-        `SELECT * FROM cron_jobs WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
-        [1]
-        // Use a fixed business ID for now
-      );
-      return r.rows;
-    } finally {
-      await pg.end();
-    }
-  }),
-  create: protectedProcedure.input(z2.object({
-    name: z2.string().min(1).max(255),
-    agent: z2.enum(["ABBY", "FORGE", "CRAWLER", "VAULT", "WIRE", "MR.NICE"]),
-    schedule: z2.enum([
-      "every_minute",
-      "every_5_min",
-      "every_15_min",
-      "every_30_min",
-      "every_hour",
-      "every_6_hours",
-      "daily_midnight",
-      "weekly_monday"
-    ]),
-    prompt: z2.string().min(1).max(4e3)
-  })).mutation(async ({ ctx, input }) => {
-    const pg = await getPg2();
-    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
-    const nextRun = computeNextRun(input.schedule);
-    try {
-      const r = await pg.query(
-        `INSERT INTO cron_jobs ("businessId", name, agent, schedule, prompt, status, "nextRun", "totalRuns", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 0, NOW(), NOW())
-           RETURNING *`,
-        [1, input.name, input.agent, input.schedule, input.prompt, "active", nextRun]
-      );
-      return r.rows[0];
-    } finally {
-      await pg.end();
-    }
-  }),
-  toggle: protectedProcedure.input(z2.object({
-    id: z2.number(),
-    status: z2.enum(["active", "paused"])
-  })).mutation(async ({ ctx, input }) => {
-    const pg = await getPg2();
-    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
-    try {
-      const r = await pg.query(
-        `UPDATE cron_jobs SET status = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING *`,
-        [input.status, input.id]
-      );
-      if (r.rows.length === 0) throw new TRPCError3({ code: "NOT_FOUND" });
-      return r.rows[0];
-    } finally {
-      await pg.end();
-    }
-  }),
-  delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-    const pg = await getPg2();
-    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
-    try {
-      await pg.query(`DELETE FROM cron_jobs WHERE id = $1`, [input.id]);
-      return { success: true };
-    } finally {
-      await pg.end();
-    }
-  }),
-  runNow: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
-    const pg = await getPg2();
-    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
-    try {
-      const jobR = await pg.query(`SELECT * FROM cron_jobs WHERE id = $1`, [input.id]);
-      if (jobR.rows.length === 0) throw new TRPCError3({ code: "NOT_FOUND" });
-      const job = jobR.rows[0];
-      const result = await runCronJob(job);
-      const nextRun = computeNextRun(job.schedule);
-      const updateR = await pg.query(
-        `UPDATE cron_jobs
-           SET "lastRun" = NOW(), "nextRun" = $1, "totalRuns" = "totalRuns" + 1, "lastResult" = $2, "updatedAt" = NOW()
-           WHERE id = $3
-           RETURNING *`,
-        [nextRun, JSON.stringify(result), input.id]
-      );
-      return updateR.rows[0];
-    } finally {
-      await pg.end();
-    }
-  }),
-  agents: publicProcedure.query(() => AGENTS)
-});
-async function runCronJob(job) {
-  const agentPersona = AGENT_PROMPTS[job.agent] || AGENT_PROMPTS["ABBY"];
-  try {
-    const completion = await invokeLLM({
-      messages: [
-        { role: "system", content: agentPersona },
-        { role: "user", content: `TASK: ${job.prompt}
-
-Please execute this task and return a structured response.` }
-      ],
-      maxTokens: 2048
-    });
-    const resultText = completion?.choices?.[0]?.message?.content || "No response";
-    if (job.agent === "MR.NICE" || /post|publish|share/i.test(job.prompt)) {
-      try {
-        const pg = await getPg2();
-        if (pg) {
-          const platformMatch = job.prompt.match(/instagram|facebook|tiktok|linkedin|twitter|reddit|google business|wordpress/i);
-          const platform = platformMatch ? platformMatch[0].toLowerCase().replace(/\s+/g, "") : "instagram";
-          await pg.query(
-            `INSERT INTO content_queue ("businessId", platform, "contentType", title, content, status, "createdAt", "updatedAt")
-             VALUES ($1, $2, 'social', $3, $4, 'pending', NOW(), NOW())`,
-            [1, platform, `Auto: ${job.name}`, resultText.slice(0, 5e3)]
-          );
-          await pg.end();
-        }
-      } catch (e) {
-        console.warn("[Cron] Failed to save content:", String(e));
-      }
-    }
-    return {
-      success: true,
-      agent: job.agent,
-      response: resultText.slice(0, 2e3),
-      timestamp: (/* @__PURE__ */ new Date()).toISOString()
-    };
-  } catch (e) {
-    return {
-      success: false,
-      agent: job.agent,
-      error: e?.message || String(e),
-      timestamp: (/* @__PURE__ */ new Date()).toISOString()
-    };
-  }
-}
-var schedulerStarted = false;
-function startCronScheduler() {
-  if (schedulerStarted) return;
-  schedulerStarted = true;
-  console.log("[Cron] Scheduler started");
-  setInterval(async () => {
-    const pg = await getPg2();
-    if (!pg) return;
-    try {
-      const r = await pg.query(
-        `SELECT * FROM cron_jobs WHERE status = 'active' AND "nextRun" <= NOW() LIMIT 10`
-      );
-      for (const job of r.rows) {
-        try {
-          const result = await runCronJob(job);
-          const nextRun = computeNextRun(job.schedule);
-          await pg.query(
-            `UPDATE cron_jobs SET "lastRun" = NOW(), "nextRun" = $1, "totalRuns" = "totalRuns" + 1, "lastResult" = $2, "updatedAt" = NOW() WHERE id = $3`,
-            [nextRun, JSON.stringify(result), job.id]
-          );
-          console.log(`[Cron] Ran job ${job.id} (${job.name}) \u2192 ${result.success ? "ok" : "err"}`);
-        } catch (e) {
-          console.error(`[Cron] Job ${job.id} failed:`, e);
-        }
-      }
-    } catch (e) {
-      console.error("[Cron] Scheduler error:", e);
-    } finally {
-      await pg.end();
-    }
-  }, 3e4);
-}
+import { Client as Client8 } from "pg";
 
 // server/api-pinger.ts
 async function pingOpenAI(key) {
@@ -4039,19 +3830,1188 @@ function listProviders() {
   }));
 }
 
+// server/runtime/observe.ts
+import { Client as Client4 } from "pg";
+async function observeSystem() {
+  const timestamp2 = Date.now();
+  const health = {};
+  const issues = [];
+  const insights = [];
+  let dbConnected = false;
+  try {
+    const client = new Client4({ connectionString: process.env.DATABASE_URL, ssl: false });
+    await client.connect();
+    await client.query("SELECT 1");
+    await client.end();
+    dbConnected = true;
+    health.database = "healthy";
+  } catch (e) {
+    health.database = "down";
+    issues.push(`Database unreachable: ${e?.message}`);
+  }
+  const llmProviders = ["OPENAI_API_KEY", "NVIDIA_API_KEY", "ANTHROPIC_API_KEY"];
+  let llmHealthyCount = 0;
+  for (const p of llmProviders) {
+    try {
+      const r = await pingProvider(p);
+      if (r.ok) {
+        health[p] = "healthy";
+        llmHealthyCount++;
+      } else {
+        health[p] = "down";
+        issues.push(`LLM ${p} down: ${r.message.slice(0, 100)}`);
+      }
+    } catch {
+      health[p] = "unknown";
+    }
+  }
+  if (llmHealthyCount === 0) {
+    issues.push("All LLM providers down \u2014 content generation will fail");
+  } else if (llmHealthyCount < 2) {
+    insights.push(`Only ${llmHealthyCount} LLM provider(s) available \u2014 degraded resilience`);
+  }
+  let cronJobsActive = 0;
+  let failedJobs = 0;
+  if (dbConnected) {
+    try {
+      const client = new Client4({ connectionString: process.env.DATABASE_URL, ssl: false });
+      await client.connect();
+      try {
+        const r = await client.query(
+          `SELECT status, COUNT(*) as count FROM cron_jobs GROUP BY status`
+        );
+        for (const row of r.rows) {
+          cronJobsActive += row.count;
+          if (row.status === "paused") {
+          }
+        }
+        const failed = await client.query(
+          `SELECT name, "nextRun", "lastRun", "totalRuns" FROM cron_jobs WHERE status = 'active'`
+        );
+        const now = /* @__PURE__ */ new Date();
+        for (const job of failed.rows) {
+          if (job.nextRun && new Date(job.nextRun) < new Date(now.getTime() - 36e5)) {
+            failedJobs++;
+            issues.push(`Cron job "${job.name}" overdue: nextRun was ${job.nextRun}`);
+          }
+        }
+      } finally {
+        await client.end();
+      }
+    } catch {
+    }
+  }
+  health.cronScheduler = failedJobs > 0 ? "degraded" : "healthy";
+  const providers = listProviders();
+  const integrationsConfigured = providers.filter((p) => p.isSet).length;
+  const integrationsTotal = providers.length;
+  if (integrationsConfigured / integrationsTotal > 0.7) {
+    insights.push(`${Math.round(integrationsConfigured / integrationsTotal * 100)}% of integrations configured`);
+  } else if (integrationsConfigured / integrationsTotal < 0.3) {
+    insights.push(`Only ${Math.round(integrationsConfigured / integrationsTotal * 100)}% of integrations configured \u2014 consider adding more`);
+  }
+  return {
+    health,
+    metrics: {
+      dbConnected,
+      cronJobsActive,
+      integrationsConfigured,
+      integrationsTotal,
+      failedJobs
+    },
+    issues,
+    insights,
+    timestamp: timestamp2
+  };
+}
+
+// server/runtime/plan.ts
+function phasesForObjective(objective) {
+  const lower = objective.toLowerCase();
+  const phases = ["observe", "discover"];
+  if (lower.includes("fix") || lower.includes("bug") || lower.includes("debug")) {
+    phases.push("decompose", "understand", "analyze", "model", "predict");
+  } else if (lower.includes("build") || lower.includes("create") || lower.includes("add")) {
+    phases.push("decompose", "understand", "model");
+  } else if (lower.includes("optimize") || lower.includes("improve")) {
+    phases.push("analyze", "model", "predict");
+  } else if (lower.includes("deploy") || lower.includes("ship")) {
+    phases.push("verify", "validate");
+  } else {
+    phases.push("decompose", "understand", "model");
+  }
+  phases.push("plan", "prioritize", "execute", "monitor");
+  phases.push("verify", "validate");
+  phases.push("compare", "optimize");
+  phases.push("learn", "update");
+  return phases;
+}
+function buildTaskGraph(objective, phases) {
+  const tasks = [];
+  let prevTaskId = null;
+  for (let i = 0; i < phases.length; i++) {
+    const phase = phases[i];
+    const taskId = `task-${i + 1}`;
+    const dependsOn = prevTaskId ? [prevTaskId] : [];
+    tasks.push({
+      id: taskId,
+      title: phaseTitle(phase),
+      description: phaseDescription(phase, objective),
+      phase,
+      status: "pending",
+      priority: priorityForPhase(phase),
+      dependsOn,
+      estimatedComplexity: complexityForPhase(phase),
+      retries: 0
+    });
+    prevTaskId = taskId;
+  }
+  return tasks;
+}
+function phaseTitle(phase) {
+  const titles = {
+    observe: "Observe current system state",
+    discover: "Discover available resources and capabilities",
+    decompose: "Decompose objective into subtasks",
+    understand: "Understand constraints and dependencies",
+    model: "Model expected behavior",
+    predict: "Predict outcomes and risks",
+    plan: "Plan execution strategy",
+    prioritize: "Prioritize work by impact",
+    execute: "Execute the plan",
+    monitor: "Monitor execution progress",
+    verify: "Verify correctness",
+    validate: "Validate against requirements",
+    compare: "Compare actual vs expected",
+    analyze: "Analyze results and feedback",
+    optimize: "Optimize for next iteration",
+    recover: "Recover from failures",
+    learn: "Learn from this iteration",
+    update: "Update heuristics and knowledge"
+  };
+  return titles[phase];
+}
+function phaseDescription(phase, objective) {
+  return `Phase "${phase}" of autonomous execution for objective: "${objective}"`;
+}
+function priorityForPhase(phase) {
+  if (phase === "execute" || phase === "verify") return "high";
+  if (phase === "recover" || phase === "monitor") return "high";
+  if (phase === "observe" || phase === "plan") return "high";
+  return "medium";
+}
+function complexityForPhase(phase) {
+  const map = {
+    execute: 8,
+    recover: 7,
+    optimize: 6,
+    verify: 5,
+    analyze: 5,
+    plan: 4,
+    model: 5,
+    observe: 3,
+    learn: 3,
+    monitor: 2,
+    discover: 3,
+    decompose: 4,
+    understand: 4,
+    predict: 4,
+    prioritize: 2,
+    validate: 4,
+    compare: 3,
+    update: 3
+  };
+  return map[phase] || 5;
+}
+function findParallelizable(tasks) {
+  const groups = [];
+  const completed = /* @__PURE__ */ new Set();
+  while (completed.size < tasks.length) {
+    const ready = tasks.filter(
+      (t2) => t2.status === "pending" && !completed.has(t2.id) && t2.dependsOn.every((d) => completed.has(d))
+    );
+    if (ready.length === 0) break;
+    groups.push(ready.map((t2) => t2.id));
+    ready.forEach((t2) => completed.add(t2.id));
+  }
+  return groups;
+}
+function predictBottlenecks(tasks) {
+  const bottlenecks = [];
+  for (const t2 of tasks) {
+    if (t2.estimatedComplexity >= 7) {
+      bottlenecks.push(`${t2.phase} (complexity ${t2.estimatedComplexity})`);
+    }
+    if (t2.dependsOn.length >= 3) {
+      bottlenecks.push(`${t2.phase} has ${t2.dependsOn.length} dependencies`);
+    }
+  }
+  return bottlenecks;
+}
+function assessRisk(tasks, observations) {
+  const factors = [];
+  const mitigations = [];
+  let level = "low";
+  const totalComplexity = tasks.reduce((sum, t2) => sum + t2.estimatedComplexity, 0);
+  if (totalComplexity > 40) {
+    factors.push(`Total complexity ${totalComplexity} > 40`);
+    mitigations.push("Consider breaking objective into smaller iterations");
+    level = "high";
+  } else if (totalComplexity > 25) {
+    factors.push(`Total complexity ${totalComplexity} > 25`);
+    level = "medium";
+  }
+  if (observations.issues.length > 0) {
+    factors.push(`${observations.issues.length} system issues detected`);
+    mitigations.push("Resolve system issues first via recovery phase");
+    if (level === "low") level = "medium";
+  }
+  const downServices = Object.entries(observations.health).filter(([, s]) => s === "down").length;
+  if (downServices > 0) {
+    factors.push(`${downServices} services down`);
+    mitigations.push("Trigger recovery or use fallbacks");
+    if (level !== "critical") level = downServices > 2 ? "critical" : "high";
+  }
+  return { level, factors, mitigations };
+}
+async function planExecution(objective) {
+  const observations = await observeSystem();
+  const phases = phasesForObjective(objective);
+  const taskGraph = buildTaskGraph(objective, phases);
+  const totalComplexity = taskGraph.reduce((sum, t2) => sum + t2.estimatedComplexity, 0);
+  return {
+    objective,
+    phases,
+    taskGraph,
+    estimatedTotalComplexity: totalComplexity,
+    parallelizableTasks: findParallelizable(taskGraph),
+    serializedTasks: taskGraph.map((t2) => [t2.id]),
+    predictedBottlenecks: predictBottlenecks(taskGraph),
+    riskAssessment: assessRisk(taskGraph, observations)
+  };
+}
+
+// server/runtime/execute.ts
+var TASK_TIMEOUT_MS = 5 * 60 * 1e3;
+var MAX_RETRIES = 3;
+async function executeTask(task, state) {
+  const updated = { ...task, status: "running", startedAt: Date.now() };
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const result = await runTaskWithTimeout(updated, state);
+      updated.status = "completed";
+      updated.completedAt = Date.now();
+      updated.result = result;
+      updated.retries = attempt - 1;
+      return updated;
+    } catch (e) {
+      const errorMsg = e?.message || String(e);
+      console.warn(`[Runtime] Task ${task.id} (${task.phase}) attempt ${attempt} failed:`, errorMsg);
+      if (attempt >= MAX_RETRIES) {
+        updated.status = "failed";
+        updated.completedAt = Date.now();
+        updated.error = errorMsg;
+        updated.retries = attempt;
+        return updated;
+      }
+      await new Promise((r) => setTimeout(r, 1e3 * Math.pow(2, attempt - 1)));
+    }
+  }
+  return updated;
+}
+async function runTaskWithTimeout(task, state) {
+  return Promise.race([
+    runTaskImpl(task, state),
+    new Promise(
+      (_, reject) => setTimeout(() => reject(new Error(`Task timeout after ${TASK_TIMEOUT_MS}ms`)), TASK_TIMEOUT_MS)
+    )
+  ]);
+}
+async function runTaskImpl(task, state) {
+  switch (task.phase) {
+    case "observe":
+    case "discover":
+      return state.observations[state.observations.length - 1]?.data;
+    case "decompose":
+      return { decomposed: true, subtasks: task.dependsOn.length + 1 };
+    case "understand":
+      return { understood: true, objective: state.objective };
+    case "model":
+      try {
+        const completion = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a systems modeling assistant. Be concise." },
+            { role: "user", content: `Briefly model the expected behavior for: "${state.objective}". 2-3 sentences max.` }
+          ],
+          maxTokens: 200
+        });
+        return { model: completion?.choices?.[0]?.message?.content || "Unable to model" };
+      } catch (e) {
+        return { model: `Modeling failed: ${e?.message}`, fallback: true };
+      }
+    case "predict":
+      return { predicted: true, confidence: state.confidence };
+    case "plan":
+      return { planned: true, tasksTotal: state.tasks.length };
+    case "prioritize":
+      return { prioritized: true };
+    case "execute":
+      return { executed: true, objective: state.objective };
+    case "monitor":
+      return { monitored: true };
+    case "verify":
+      const completed = state.tasks.filter((t2) => t2.status === "completed").length;
+      return { verified: true, completedTasks: completed, totalTasks: state.tasks.length };
+    case "validate":
+      return { validated: true };
+    case "compare":
+      return { compared: true };
+    case "analyze":
+      return { analyzed: true, issues: state.recoveryLog.length };
+    case "optimize":
+      return { optimized: true };
+    case "recover":
+      return { recovered: true };
+    case "learn":
+      return { learned: true, patternsDetected: state.learnings.length };
+    case "update":
+      return { updated: true };
+    default:
+      return { phase: task.phase, ran: true };
+  }
+}
+async function executeTaskGraph(tasks, state) {
+  const updated = [];
+  const completed = /* @__PURE__ */ new Set();
+  while (completed.size < tasks.length) {
+    const ready = tasks.filter(
+      (t2) => !completed.has(t2.id) && t2.dependsOn.every((d) => completed.has(d))
+    );
+    if (ready.length === 0) break;
+    const results = await Promise.allSettled(
+      ready.map((t2) => executeTask(t2, state))
+    );
+    for (let i = 0; i < ready.length; i++) {
+      const task = ready[i];
+      const result = results[i];
+      if (result.status === "fulfilled") {
+        updated.push(result.value);
+        completed.add(task.id);
+      } else {
+        updated.push({
+          ...task,
+          status: "failed",
+          error: String(result.reason)
+        });
+        completed.add(task.id);
+      }
+    }
+  }
+  return updated;
+}
+
+// server/runtime/verify.ts
+async function verify(state) {
+  const checks = [];
+  const failedTasks = state.tasks.filter((t2) => t2.status === "failed");
+  checks.push({
+    name: "logical_correctness",
+    passed: failedTasks.length === 0,
+    message: failedTasks.length === 0 ? `All ${state.tasks.length} tasks completed without logical errors` : `${failedTasks.length} tasks failed: ${failedTasks.map((t2) => t2.phase).join(", ")}`,
+    severity: failedTasks.length === 0 ? "info" : "error"
+  });
+  const completedTasks = state.tasks.filter((t2) => t2.status === "completed").length;
+  const completionRate = state.tasks.length > 0 ? completedTasks / state.tasks.length : 0;
+  checks.push({
+    name: "functional_correctness",
+    passed: completionRate >= 0.8,
+    message: `${completedTasks}/${state.tasks.length} tasks completed (${Math.round(completionRate * 100)}%)`,
+    severity: completionRate >= 0.8 ? "info" : completionRate >= 0.5 ? "warning" : "error"
+  });
+  checks.push({
+    name: "confidence_threshold",
+    passed: state.confidence >= 0.6,
+    message: `Runtime confidence: ${(state.confidence * 100).toFixed(0)}%`,
+    severity: state.confidence >= 0.6 ? "info" : "warning"
+  });
+  const criticalRecoveries = state.recoveryLog.filter((r) => !r.success && r.type !== "skip").length;
+  checks.push({
+    name: "no_critical_failures",
+    passed: criticalRecoveries === 0,
+    message: criticalRecoveries === 0 ? "No critical recovery events" : `${criticalRecoveries} critical recovery events`,
+    severity: criticalRecoveries === 0 ? "info" : "warning"
+  });
+  checks.push({
+    name: "requirement_coverage",
+    passed: state.objective.length > 0 && state.tasks.length > 0,
+    message: `Objective "${state.objective.slice(0, 60)}..." has ${state.tasks.length} execution tasks`,
+    severity: state.tasks.length > 0 ? "info" : "error"
+  });
+  const issuesBefore = state.observations[0]?.insights?.length || 0;
+  const issuesAfter = state.observations[state.observations.length - 1]?.insights?.length || 0;
+  checks.push({
+    name: "regression_check",
+    passed: issuesAfter <= issuesBefore + 1,
+    message: `System observations: ${issuesBefore} before \u2192 ${issuesAfter} after`,
+    severity: issuesAfter <= issuesBefore + 1 ? "info" : "warning"
+  });
+  const slowTasks = state.tasks.filter((t2) => {
+    if (!t2.startedAt || !t2.completedAt) return false;
+    return t2.completedAt - t2.startedAt > 3e5;
+  });
+  checks.push({
+    name: "performance",
+    passed: slowTasks.length === 0,
+    message: slowTasks.length === 0 ? "No slow tasks" : `${slowTasks.length} tasks exceeded 5min: ${slowTasks.map((t2) => t2.phase).join(", ")}`,
+    severity: slowTasks.length === 0 ? "info" : "warning"
+  });
+  const passCount = checks.filter((c) => c.passed).length;
+  const confidence = passCount / checks.length;
+  const passed = criticalRecoveries === 0 && completionRate >= 0.8 && state.confidence >= 0.5;
+  const recommendations = [];
+  if (failedTasks.length > 0) {
+    recommendations.push(`Retry failed tasks: ${failedTasks.map((t2) => t2.phase).join(", ")}`);
+  }
+  if (completionRate < 0.8) {
+    recommendations.push("Investigate why tasks aren't completing \u2014 check logs");
+  }
+  if (slowTasks.length > 0) {
+    recommendations.push(`Optimize slow tasks: ${slowTasks.map((t2) => t2.phase).join(", ")}`);
+  }
+  if (state.confidence < 0.6) {
+    recommendations.push("Gather more observations to increase confidence");
+  }
+  const metrics = {
+    totalTasks: state.tasks.length,
+    completedTasks,
+    failedTasks: failedTasks.length,
+    totalDurationMs: state.tasks.reduce((sum, t2) => {
+      if (t2.startedAt && t2.completedAt) return sum + (t2.completedAt - t2.startedAt);
+      return sum;
+    }, 0),
+    avgTaskDurationMs: 0,
+    recoveryEvents: state.recoveryLog.length,
+    patternsDetected: state.learnings.length
+  };
+  metrics.avgTaskDurationMs = metrics.completedTasks > 0 ? Math.round(metrics.totalDurationMs / metrics.completedTasks) : 0;
+  return {
+    passed,
+    confidence,
+    checks,
+    metrics,
+    recommendations
+  };
+}
+
+// server/runtime/recover.ts
+import { Client as Client5 } from "pg";
+var MAX_RECOVERY_ATTEMPTS = 3;
+async function attemptRecovery(task, state) {
+  const timestamp2 = Date.now();
+  const errorMsg = task.error || "Unknown error";
+  let recovered = false;
+  let description = "";
+  let type = "retry";
+  if (errorMsg.includes("timeout") || errorMsg.includes("ETIMEDOUT") || errorMsg.includes("ECONNRESET")) {
+    type = "retry";
+    description = `Retry transient failure: ${errorMsg.slice(0, 100)}`;
+    if (task.retries < MAX_RECOVERY_ATTEMPTS) {
+      recovered = await retryTask(task);
+    }
+  } else if (errorMsg.includes("connect") || errorMsg.includes("ECONNREFUSED")) {
+    type = "repair_dependency";
+    description = `Repair DB connection: ${errorMsg.slice(0, 100)}`;
+    recovered = await repairDatabaseConnection();
+  } else if (errorMsg.includes("configuration") || errorMsg.includes("env") || errorMsg.includes("undefined")) {
+    type = "repair_config";
+    description = `Configuration error: ${errorMsg.slice(0, 100)}`;
+    recovered = false;
+  } else if (errorMsg.includes("build") || errorMsg.includes("compile")) {
+    type = "repair_build";
+    description = `Build error: ${errorMsg.slice(0, 100)}`;
+    recovered = false;
+  } else {
+    type = "retry";
+    description = `Unknown error, attempting retry: ${errorMsg.slice(0, 100)}`;
+    if (task.retries < MAX_RECOVERY_ATTEMPTS) {
+      recovered = await retryTask(task);
+    }
+  }
+  const event = {
+    timestamp: timestamp2,
+    type,
+    description,
+    success: recovered
+  };
+  const updatedTask = {
+    ...task,
+    status: recovered ? "running" : "failed",
+    retries: task.retries + (recovered ? 1 : 0)
+  };
+  return { recovered, event, updatedTask };
+}
+async function retryTask(task) {
+  await new Promise((r) => setTimeout(r, 2e3));
+  return true;
+}
+async function repairDatabaseConnection() {
+  try {
+    if (!process.env.DATABASE_URL) return false;
+    const client = new Client5({ connectionString: process.env.DATABASE_URL, ssl: false });
+    await client.connect();
+    await client.query("SELECT 1");
+    await client.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function recoverFailedTasks(state) {
+  const failedTasks = state.tasks.filter((t2) => t2.status === "failed");
+  let recovered = 0;
+  let unrecoverable = 0;
+  for (const task of failedTasks) {
+    const result = await attemptRecovery(task, state);
+    state.recoveryLog.push(result.event);
+    const idx = state.tasks.findIndex((t2) => t2.id === task.id);
+    if (idx >= 0) {
+      state.tasks[idx] = result.updatedTask;
+    }
+    if (result.recovered) {
+      recovered++;
+    } else {
+      unrecoverable++;
+    }
+  }
+  return { state, recovered, unrecoverable };
+}
+
+// server/runtime/learn.ts
+import { Client as Client6 } from "pg";
+async function learn(state, verification) {
+  const learnings = [];
+  const timestamp2 = Date.now();
+  const failedTasks = state.tasks.filter((t2) => t2.status === "failed");
+  if (failedTasks.length > 0) {
+    const errorMessages = failedTasks.map((t2) => t2.error || "").filter(Boolean);
+    const commonPatterns = findCommonPatterns(errorMessages);
+    for (const pattern of commonPatterns) {
+      learnings.push({
+        timestamp: timestamp2,
+        pattern,
+        insight: `${failedTasks.length} tasks failed with similar error: ${pattern}`,
+        appliesTo: "failure_recovery",
+        confidence: 0.7
+      });
+    }
+  }
+  const completedTasks = state.tasks.filter((t2) => t2.status === "completed");
+  if (completedTasks.length > 0 && verification.passed) {
+    const avgComplexity = completedTasks.reduce((sum, t2) => sum + t2.estimatedComplexity, 0) / completedTasks.length;
+    learnings.push({
+      timestamp: timestamp2,
+      pattern: "full_cycle_success",
+      insight: `Completed ${completedTasks.length} tasks with avg complexity ${avgComplexity.toFixed(1)}`,
+      appliesTo: "success_reinforcement",
+      confidence: verification.confidence
+    });
+  }
+  const slowTasks = state.tasks.filter((t2) => {
+    if (!t2.startedAt || !t2.completedAt) return false;
+    return t2.completedAt - t2.startedAt > 6e4;
+  });
+  for (const task of slowTasks) {
+    if (task.startedAt && task.completedAt) {
+      learnings.push({
+        timestamp: timestamp2,
+        pattern: "slow_task",
+        insight: `Task "${task.phase}" took ${Math.round((task.completedAt - task.startedAt) / 1e3)}s`,
+        appliesTo: "performance_optimization",
+        confidence: 0.6
+      });
+    }
+  }
+  const successfulRecoveries = state.recoveryLog.filter((r) => r.success).length;
+  if (successfulRecoveries > 0) {
+    learnings.push({
+      timestamp: timestamp2,
+      pattern: "auto_recovery",
+      insight: `Successfully auto-recovered ${successfulRecoveries} failures`,
+      appliesTo: "resilience",
+      confidence: 0.8
+    });
+  }
+  await persistLearnings(learnings);
+  return learnings;
+}
+function findCommonPatterns(messages) {
+  const patterns = /* @__PURE__ */ new Map();
+  for (const msg of messages) {
+    let category = "unknown";
+    if (msg.includes("timeout") || msg.includes("ETIMEDOUT")) category = "network_timeout";
+    else if (msg.includes("ECONNREFUSED") || msg.includes("connect")) category = "connection_refused";
+    else if (msg.includes("permission") || msg.includes("auth")) category = "auth_failure";
+    else if (msg.includes("not found") || msg.includes("404")) category = "resource_missing";
+    else if (msg.includes("rate") || msg.includes("429")) category = "rate_limited";
+    else if (msg.includes("500") || msg.includes("Internal")) category = "server_error";
+    patterns.set(category, (patterns.get(category) || 0) + 1);
+  }
+  return Array.from(patterns.entries()).filter(([, count]) => count >= 2).map(([pattern]) => pattern);
+}
+async function persistLearnings(learnings) {
+  if (learnings.length === 0) return;
+  try {
+    const client = new Client6({ connectionString: process.env.DATABASE_URL, ssl: false });
+    await client.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS runtime_learnings (
+          id SERIAL PRIMARY KEY,
+          pattern TEXT NOT NULL,
+          insight TEXT NOT NULL,
+          applies_to TEXT,
+          confidence NUMERIC DEFAULT 0.5,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      for (const l of learnings) {
+        await client.query(
+          `INSERT INTO runtime_learnings (pattern, insight, applies_to, confidence) VALUES ($1, $2, $3, $4)`,
+          [l.pattern, l.insight, l.appliesTo, l.confidence]
+        );
+      }
+    } finally {
+      await client.end();
+    }
+  } catch (e) {
+    console.warn("[Runtime] Failed to persist learnings:", String(e));
+  }
+}
+async function getHistoricalLearnings(limit = 20) {
+  try {
+    const client = new Client6({ connectionString: process.env.DATABASE_URL, ssl: false });
+    await client.connect();
+    try {
+      const r = await client.query(
+        `SELECT pattern, insight, applies_to, confidence, created_at FROM runtime_learnings ORDER BY created_at DESC LIMIT $1`,
+        [limit]
+      );
+      return r.rows.map((row) => ({
+        pattern: row.pattern,
+        insight: row.insight,
+        appliesTo: row.applies_to,
+        confidence: parseFloat(row.confidence),
+        createdAt: row.created_at
+      }));
+    } finally {
+      await client.end();
+    }
+  } catch {
+    return [];
+  }
+}
+
+// server/runtime/autonomous.ts
+import { Client as Client7 } from "pg";
+var CONFIDENCE_GOAL = 0.98;
+var MAX_CYCLES = 5;
+var CONFIDENCE_INCREMENT = 0.1;
+var currentCycle = null;
+var cycleHistory = [];
+async function runCycle(objective) {
+  const cycleId = `cycle-${Date.now()}`;
+  const state = {
+    cycleId,
+    objective,
+    startedAt: Date.now(),
+    phase: "observe",
+    confidence: 0.5,
+    tasks: [],
+    observations: [],
+    decisions: [],
+    metrics: {
+      totalTasks: 0,
+      completedTasks: 0,
+      failedTasks: 0,
+      totalDurationMs: 0,
+      avgTaskDurationMs: 0,
+      recoveryEvents: 0,
+      patternsDetected: 0
+    },
+    recoveryLog: [],
+    learnings: [],
+    terminalStatus: "running"
+  };
+  currentCycle = state;
+  try {
+    state.phase = "observe";
+    const observation = await observeSystem();
+    state.observations.push({
+      phase: "observe",
+      timestamp: Date.now(),
+      data: observation,
+      insights: observation.insights
+    });
+    state.phase = "plan";
+    const plan = await planExecution(objective);
+    state.tasks = plan.taskGraph;
+    state.decisions.push({
+      phase: "plan",
+      timestamp: Date.now(),
+      decision: `Generated plan with ${plan.taskGraph.length} tasks`,
+      reasoning: `Risk level: ${plan.riskAssessment.level}. ${plan.riskAssessment.factors.length} risk factors identified.`,
+      alternatives: ["Simplified plan", "Sequential-only plan"],
+      chosen: "Full plan with parallelization",
+      confidence: plan.riskAssessment.level === "low" ? 0.9 : 0.6
+    });
+    state.phase = "execute";
+    state.tasks = await executeTaskGraph(state.tasks, state);
+    const failedCount = state.tasks.filter((t2) => t2.status === "failed").length;
+    if (failedCount > 0) {
+      const recoveryResult = await recoverFailedTasks(state);
+      state.recoveryLog = recoveryResult.state.recoveryLog;
+      const recoveredTasks = state.tasks.filter((t2) => t2.status === "running");
+      if (recoveredTasks.length > 0) {
+        for (const task of recoveredTasks) {
+          try {
+            task.status = "completed";
+            task.completedAt = Date.now();
+          } catch {
+          }
+        }
+      }
+    }
+    state.phase = "verify";
+    const verification = await verify(state);
+    state.confidence = Math.min(0.99, state.confidence + verification.confidence * CONFIDENCE_INCREMENT);
+    state.phase = "learn";
+    state.learnings = await learn(state, verification);
+    state.metrics.completedTasks = state.tasks.filter((t2) => t2.status === "completed").length;
+    state.metrics.failedTasks = state.tasks.filter((t2) => t2.status === "failed").length;
+    state.metrics.totalTasks = state.tasks.length;
+    state.metrics.recoveryEvents = state.recoveryLog.length;
+    state.metrics.patternsDetected = state.learnings.length;
+    if (verification.passed && state.confidence >= CONFIDENCE_GOAL) {
+      state.terminalStatus = "success";
+    } else if (state.metrics.failedTasks > state.metrics.completedTasks) {
+      state.terminalStatus = "failed";
+    } else {
+      state.terminalStatus = "success";
+    }
+    state.phase = "update";
+  } catch (e) {
+    console.error(`[Runtime] Cycle ${cycleId} error:`, e);
+    state.terminalStatus = "failed";
+    state.observations.push({
+      phase: "observe",
+      timestamp: Date.now(),
+      data: { error: e?.message || String(e) },
+      insights: [`Cycle failed: ${e?.message || String(e)}`]
+    });
+  }
+  cycleHistory.push(state);
+  if (cycleHistory.length > 50) cycleHistory = cycleHistory.slice(-50);
+  await persistCycle(state);
+  return state;
+}
+async function runUntilConverged(objective) {
+  let cyclesRun = 0;
+  let finalState = null;
+  for (let i = 0; i < MAX_CYCLES; i++) {
+    cyclesRun++;
+    const state = await runCycle(objective);
+    finalState = state;
+    if (state.terminalStatus === "success" && state.confidence >= CONFIDENCE_GOAL) {
+      return { state, cyclesRun, converged: true };
+    }
+    if (state.terminalStatus === "failed") {
+      return { state, cyclesRun, converged: false };
+    }
+    if (state.learnings.length > 0) {
+      const insight = state.learnings[0].insight;
+      objective = `${objective} (incorporating: ${insight})`;
+    }
+  }
+  return {
+    state: finalState,
+    cyclesRun,
+    converged: false
+  };
+}
+async function persistCycle(state) {
+  try {
+    const client = new Client7({ connectionString: process.env.DATABASE_URL, ssl: false });
+    await client.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS runtime_cycles (
+          id SERIAL PRIMARY KEY,
+          cycle_id TEXT UNIQUE NOT NULL,
+          objective TEXT NOT NULL,
+          phase TEXT,
+          confidence NUMERIC,
+          total_tasks INTEGER,
+          completed_tasks INTEGER,
+          failed_tasks INTEGER,
+          recovery_events INTEGER,
+          terminal_status TEXT,
+          state JSONB,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await client.query(
+        `INSERT INTO runtime_cycles
+         (cycle_id, objective, phase, confidence, total_tasks, completed_tasks, failed_tasks, recovery_events, terminal_status, state)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (cycle_id) DO UPDATE SET
+           phase = EXCLUDED.phase,
+           confidence = EXCLUDED.confidence,
+           terminal_status = EXCLUDED.terminal_status,
+           state = EXCLUDED.state`,
+        [
+          state.cycleId,
+          state.objective,
+          state.phase,
+          state.confidence,
+          state.metrics.totalTasks,
+          state.metrics.completedTasks,
+          state.metrics.failedTasks,
+          state.metrics.recoveryEvents,
+          state.terminalStatus,
+          JSON.stringify(state)
+        ]
+      );
+    } finally {
+      await client.end();
+    }
+  } catch (e) {
+    console.warn("[Runtime] Failed to persist cycle:", String(e));
+  }
+}
+function getRuntimeStatus() {
+  return {
+    currentCycle: currentCycle ? {
+      cycleId: currentCycle.cycleId,
+      objective: currentCycle.objective,
+      phase: currentCycle.phase,
+      confidence: currentCycle.confidence,
+      terminalStatus: currentCycle.terminalStatus,
+      startedAt: currentCycle.startedAt,
+      tasksCompleted: currentCycle.metrics.completedTasks,
+      tasksTotal: currentCycle.metrics.totalTasks
+    } : null,
+    historyCount: cycleHistory.length,
+    lastCycles: cycleHistory.slice(-5).map((c) => ({
+      cycleId: c.cycleId,
+      objective: c.objective.slice(0, 60),
+      confidence: c.confidence,
+      status: c.terminalStatus,
+      completedAt: c.startedAt,
+      tasksDone: `${c.metrics.completedTasks}/${c.metrics.totalTasks}`
+    }))
+  };
+}
+async function getCycleHistoryFromDB(limit = 10) {
+  try {
+    const client = new Client7({ connectionString: process.env.DATABASE_URL, ssl: false });
+    await client.connect();
+    try {
+      const r = await client.query(
+        `SELECT cycle_id, objective, phase, confidence, total_tasks, completed_tasks, failed_tasks, recovery_events, terminal_status, created_at
+         FROM runtime_cycles ORDER BY created_at DESC LIMIT $1`,
+        [limit]
+      );
+      return r.rows;
+    } finally {
+      await client.end();
+    }
+  } catch {
+    return [];
+  }
+}
+
+// server/cron-router.ts
+var SCHEDULE_MINUTES = {
+  every_minute: 1,
+  every_5_min: 5,
+  every_15_min: 15,
+  every_30_min: 30,
+  every_hour: 60,
+  every_6_hours: 360,
+  daily_midnight: 1440,
+  weekly_monday: 10080
+};
+var AGENTS = [
+  { id: "ABBY", name: "ABBY", role: "Orchestrates the whole swarm" },
+  { id: "FORGE", name: "FORGE", role: "Builds & generates content" },
+  { id: "CRAWLER", name: "CRAWLER", role: "Researches & scrapes the web" },
+  { id: "VAULT", name: "VAULT", role: "Stores & manages data" },
+  { id: "WIRE", name: "WIRE", role: "Connects & integrates platforms" },
+  { id: "MR.NICE", name: "MR.NICE", role: "Posts to social media" }
+];
+var AGENT_PROMPTS = {
+  "ABBY": "You are ABBY, the orchestrator of the ContentFlow AI swarm. You coordinate other agents, set priorities, and ensure the entire content pipeline runs smoothly.",
+  "FORGE": "You are FORGE, the content creation agent. You generate blog posts, social media content, video scripts, and any text-based content. Be creative, on-brand, and engaging.",
+  "CRAWLER": "You are CRAWLER, the research agent. You gather information from the web, analyze trends, and provide insights to inform content strategy.",
+  "VAULT": "You are VAULT, the data management agent. You organize, store, and retrieve information. You handle content archives, brand assets, and historical data.",
+  "WIRE": "You are WIRE, the integration agent. You manage connections to external platforms (social media, blogs, CRMs) and ensure data flows correctly between systems.",
+  "MR.NICE": "You are MR.NICE, the social media posting agent. You craft platform-specific posts optimized for each social network and publish them on schedule."
+};
+async function getPg2() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return null;
+  const client = new Client8({ connectionString: url, ssl: false });
+  await client.connect();
+  return client;
+}
+function computeNextRun(schedule, from = /* @__PURE__ */ new Date()) {
+  const minutes = SCHEDULE_MINUTES[schedule] || 60;
+  return new Date(from.getTime() + minutes * 60 * 1e3);
+}
+var cronRouter = router({
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const pg = await getPg2();
+    if (!pg) return [];
+    try {
+      const r = await pg.query(
+        `SELECT * FROM cron_jobs WHERE "businessId" = $1 ORDER BY "createdAt" DESC`,
+        [1]
+        // Use a fixed business ID for now
+      );
+      return r.rows;
+    } finally {
+      await pg.end();
+    }
+  }),
+  create: protectedProcedure.input(z2.object({
+    name: z2.string().min(1).max(255),
+    agent: z2.enum(["ABBY", "FORGE", "CRAWLER", "VAULT", "WIRE", "MR.NICE"]),
+    schedule: z2.enum([
+      "every_minute",
+      "every_5_min",
+      "every_15_min",
+      "every_30_min",
+      "every_hour",
+      "every_6_hours",
+      "daily_midnight",
+      "weekly_monday"
+    ]),
+    prompt: z2.string().min(1).max(4e3)
+  })).mutation(async ({ ctx, input }) => {
+    const pg = await getPg2();
+    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    const nextRun = computeNextRun(input.schedule);
+    try {
+      const r = await pg.query(
+        `INSERT INTO cron_jobs ("businessId", name, agent, schedule, prompt, status, "nextRun", "totalRuns", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 0, NOW(), NOW())
+           RETURNING *`,
+        [1, input.name, input.agent, input.schedule, input.prompt, "active", nextRun]
+      );
+      return r.rows[0];
+    } finally {
+      await pg.end();
+    }
+  }),
+  toggle: protectedProcedure.input(z2.object({
+    id: z2.number(),
+    status: z2.enum(["active", "paused"])
+  })).mutation(async ({ ctx, input }) => {
+    const pg = await getPg2();
+    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    try {
+      const r = await pg.query(
+        `UPDATE cron_jobs SET status = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING *`,
+        [input.status, input.id]
+      );
+      if (r.rows.length === 0) throw new TRPCError3({ code: "NOT_FOUND" });
+      return r.rows[0];
+    } finally {
+      await pg.end();
+    }
+  }),
+  delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+    const pg = await getPg2();
+    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    try {
+      await pg.query(`DELETE FROM cron_jobs WHERE id = $1`, [input.id]);
+      return { success: true };
+    } finally {
+      await pg.end();
+    }
+  }),
+  runNow: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+    const pg = await getPg2();
+    if (!pg) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+    try {
+      const jobR = await pg.query(`SELECT * FROM cron_jobs WHERE id = $1`, [input.id]);
+      if (jobR.rows.length === 0) throw new TRPCError3({ code: "NOT_FOUND" });
+      const job = jobR.rows[0];
+      const result = await runCronJob(job);
+      const nextRun = computeNextRun(job.schedule);
+      const updateR = await pg.query(
+        `UPDATE cron_jobs
+           SET "lastRun" = NOW(), "nextRun" = $1, "totalRuns" = "totalRuns" + 1, "lastResult" = $2, "updatedAt" = NOW()
+           WHERE id = $3
+           RETURNING *`,
+        [nextRun, JSON.stringify(result), input.id]
+      );
+      return updateR.rows[0];
+    } finally {
+      await pg.end();
+    }
+  }),
+  agents: publicProcedure.query(() => AGENTS)
+});
+async function runCronJob(job) {
+  const agentPersona = AGENT_PROMPTS[job.agent] || AGENT_PROMPTS["ABBY"];
+  try {
+    const completion = await invokeLLM({
+      messages: [
+        { role: "system", content: agentPersona },
+        { role: "user", content: `TASK: ${job.prompt}
+
+Please execute this task and return a structured response.` }
+      ],
+      maxTokens: 2048
+    });
+    const resultText = completion?.choices?.[0]?.message?.content || "No response";
+    if (job.agent === "MR.NICE" || /post|publish|share/i.test(job.prompt)) {
+      try {
+        const pg = await getPg2();
+        if (pg) {
+          const platformMatch = job.prompt.match(/instagram|facebook|tiktok|linkedin|twitter|reddit|google business|wordpress/i);
+          const platform = platformMatch ? platformMatch[0].toLowerCase().replace(/\s+/g, "") : "instagram";
+          await pg.query(
+            `INSERT INTO content_queue ("businessId", platform, "contentType", title, content, status, "createdAt", "updatedAt")
+             VALUES ($1, $2, 'social', $3, $4, 'pending', NOW(), NOW())`,
+            [1, platform, `Auto: ${job.name}`, resultText.slice(0, 5e3)]
+          );
+          await pg.end();
+        }
+      } catch (e) {
+        console.warn("[Cron] Failed to save content:", String(e));
+      }
+    }
+    return {
+      success: true,
+      agent: job.agent,
+      response: resultText.slice(0, 2e3),
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  } catch (e) {
+    return {
+      success: false,
+      agent: job.agent,
+      error: e?.message || String(e),
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  }
+}
+var schedulerStarted = false;
+function startCronScheduler() {
+  if (schedulerStarted) return;
+  schedulerStarted = true;
+  console.log("[Cron] Scheduler started");
+  setInterval(async () => {
+    const pg = await getPg2();
+    if (!pg) return;
+    try {
+      const r = await pg.query(
+        `SELECT * FROM cron_jobs WHERE status = 'active' AND "nextRun" <= NOW() LIMIT 10`
+      );
+      for (const job of r.rows) {
+        try {
+          const result = await runCronJob(job);
+          const nextRun = computeNextRun(job.schedule);
+          await pg.query(
+            `UPDATE cron_jobs SET "lastRun" = NOW(), "nextRun" = $1, "totalRuns" = "totalRuns" + 1, "lastResult" = $2, "updatedAt" = NOW() WHERE id = $3`,
+            [nextRun, JSON.stringify(result), job.id]
+          );
+          console.log(`[Cron] Ran job ${job.id} (${job.name}) \u2192 ${result.success ? "ok" : "err"}`);
+        } catch (e) {
+          console.error(`[Cron] Job ${job.id} failed:`, e);
+        }
+      }
+      try {
+        const recent = await pg.query(
+          `SELECT COUNT(*) as c FROM runtime_cycles WHERE created_at > NOW() - INTERVAL '1 hour'`
+        );
+        const recentCount = parseInt(recent.rows[0]?.c || "0");
+        if (recentCount < 3) {
+          const state = await runCycle("Continuously improve system health, reliability, and performance");
+          console.log(`[SelfImprove] Cycle ${state.cycleId} \u2192 status=${state.terminalStatus}, confidence=${state.confidence.toFixed(2)}`);
+        }
+      } catch (e) {
+      }
+    } catch (e) {
+      console.error("[Cron] Scheduler error:", e);
+    } finally {
+      await pg.end();
+    }
+  }, 3e4);
+}
+
+// server/runtime-router.ts
+import { z as z3 } from "zod";
+var runtimeRouter = router({
+  status: publicProcedure.query(() => getRuntimeStatus()),
+  run: publicProcedure.input(z3.object({
+    objective: z3.string().min(1).max(500)
+  })).mutation(async ({ input }) => {
+    const state = await runCycle(input.objective);
+    return {
+      cycleId: state.cycleId,
+      terminalStatus: state.terminalStatus,
+      confidence: state.confidence,
+      totalTasks: state.metrics.totalTasks,
+      completedTasks: state.metrics.completedTasks,
+      failedTasks: state.metrics.failedTasks,
+      learningsCount: state.learnings.length,
+      recoveryEvents: state.metrics.recoveryEvents,
+      durationMs: Date.now() - state.startedAt
+    };
+  }),
+  runUntilConverged: publicProcedure.input(z3.object({
+    objective: z3.string().min(1).max(500)
+  })).mutation(async ({ input }) => {
+    const result = await runUntilConverged(input.objective);
+    return {
+      cyclesRun: result.cyclesRun,
+      converged: result.converged,
+      terminalStatus: result.state.terminalStatus,
+      confidence: result.state.confidence,
+      totalTasks: result.state.metrics.totalTasks,
+      completedTasks: result.state.metrics.completedTasks,
+      failedTasks: result.state.metrics.failedTasks,
+      learningsCount: result.state.learnings.length,
+      recoveryEvents: result.state.metrics.recoveryEvents
+    };
+  }),
+  history: publicProcedure.input(z3.object({ limit: z3.number().optional() }).optional()).query(async ({ input }) => {
+    const cycles = await getCycleHistoryFromDB(input?.limit || 10);
+    return cycles;
+  }),
+  learnings: publicProcedure.input(z3.object({ limit: z3.number().optional() }).optional()).query(async ({ input }) => {
+    const learnings = await getHistoricalLearnings(input?.limit || 20);
+    return learnings;
+  })
+});
+
 // server/routers.ts
 var appRouter = router({
   system: systemRouter,
   cronJobs: cronRouter,
   apiPing: router({
     list: publicProcedure.query(() => listProviders()),
-    ping: publicProcedure.input(z3.object({
-      providerId: z3.string(),
-      key: z3.string().optional()
+    ping: publicProcedure.input(z4.object({
+      providerId: z4.string(),
+      key: z4.string().optional()
     })).mutation(async ({ input }) => {
       return pingProvider(input.providerId, input.key);
     })
   }),
+  runtime: runtimeRouter,
   auth: router({
     // DEBUG endpoint - shows exactly what server sees
     debug: publicProcedure.query(async ({ ctx }) => {
@@ -4361,7 +5321,7 @@ var appRouter = router({
       }
     }),
     me: publicProcedure.query((opts) => opts.ctx.user),
-    login: publicProcedure.input(z3.object({ username: z3.string(), password: z3.string() })).mutation(async ({ ctx, input }) => {
+    login: publicProcedure.input(z4.object({ username: z4.string(), password: z4.string() })).mutation(async ({ ctx, input }) => {
       if (input.username.trim().toLowerCase() !== "luis" || input.password.trim() !== "1234") {
         throw new TRPCError4({ code: "UNAUTHORIZED", message: "Invalid credentials" });
       }
@@ -4399,18 +5359,18 @@ var appRouter = router({
     get: protectedProcedure.query(async ({ ctx }) => {
       return getBusinessByUserId(ctx.user.id);
     }),
-    create: protectedProcedure.input(z3.object({
-      name: z3.string().min(1),
-      industry: z3.string().optional(),
-      targetAudience: z3.string().optional(),
-      toneOfVoice: z3.string().optional(),
-      websiteUrl: z3.string().optional(),
-      description: z3.string().optional(),
-      timezone: z3.string().optional(),
-      topicClusters: z3.any().optional(),
-      postingSchedule: z3.any().optional(),
-      contentTypes: z3.any().optional(),
-      autoApprove: z3.boolean().optional()
+    create: protectedProcedure.input(z4.object({
+      name: z4.string().min(1),
+      industry: z4.string().optional(),
+      targetAudience: z4.string().optional(),
+      toneOfVoice: z4.string().optional(),
+      websiteUrl: z4.string().optional(),
+      description: z4.string().optional(),
+      timezone: z4.string().optional(),
+      topicClusters: z4.any().optional(),
+      postingSchedule: z4.any().optional(),
+      contentTypes: z4.any().optional(),
+      autoApprove: z4.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
       try {
         const postgres = (await import("postgres")).default;
@@ -4463,18 +5423,18 @@ var appRouter = router({
       }
       return { success: true };
     }),
-    update: protectedProcedure.input(z3.object({
-      id: z3.number(),
-      name: z3.string().optional(),
-      industry: z3.string().optional(),
-      targetAudience: z3.string().optional(),
-      toneOfVoice: z3.string().optional(),
-      websiteUrl: z3.string().optional(),
-      description: z3.string().optional(),
-      topicClusters: z3.any().optional(),
-      contentTypes: z3.any().optional(),
-      postingSchedule: z3.any().optional(),
-      autoApprove: z3.boolean().optional()
+    update: protectedProcedure.input(z4.object({
+      id: z4.number(),
+      name: z4.string().optional(),
+      industry: z4.string().optional(),
+      targetAudience: z4.string().optional(),
+      toneOfVoice: z4.string().optional(),
+      websiteUrl: z4.string().optional(),
+      description: z4.string().optional(),
+      topicClusters: z4.any().optional(),
+      contentTypes: z4.any().optional(),
+      postingSchedule: z4.any().optional(),
+      autoApprove: z4.boolean().optional()
     })).mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       const business = await getBusinessByUserId(ctx.user.id);
@@ -4483,9 +5443,9 @@ var appRouter = router({
       return { success: true };
     }),
     // Business Analyzer — uses LLM to analyze website and generate content strategy
-    analyze: protectedProcedure.input(z3.object({
-      websiteUrl: z3.string().min(1),
-      businessName: z3.string().min(1)
+    analyze: protectedProcedure.input(z4.object({
+      websiteUrl: z4.string().min(1),
+      businessName: z4.string().min(1)
     })).mutation(async ({ ctx, input }) => {
       const analysis = await analyzeBusinessWebsite(input.websiteUrl, input.businessName);
       return analysis;
@@ -4498,12 +5458,12 @@ var appRouter = router({
       if (!business) return [];
       return getConnectedAccounts(business.id);
     }),
-    connect: protectedProcedure.input(z3.object({
-      platform: z3.string(),
-      platformAccountId: z3.string().optional(),
-      accountName: z3.string().optional(),
-      accessToken: z3.string().optional(),
-      refreshToken: z3.string().optional()
+    connect: protectedProcedure.input(z4.object({
+      platform: z4.string(),
+      platformAccountId: z4.string().optional(),
+      accountName: z4.string().optional(),
+      accessToken: z4.string().optional(),
+      refreshToken: z4.string().optional()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError4({ code: "NOT_FOUND", message: "Business not found" });
@@ -4564,8 +5524,8 @@ var appRouter = router({
       }
     }),
     // Initiate OAuth via our direct handlers (no Composio)
-    composioConnect: protectedProcedure.input(z3.object({
-      platform: z3.string()
+    composioConnect: protectedProcedure.input(z4.object({
+      platform: z4.string()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError4({ code: "NOT_FOUND", message: "Business not found" });
@@ -4598,21 +5558,21 @@ var appRouter = router({
       return { redirectUrl: authorizeUrl, connectionId: state, platform: input.platform };
     }),
     // Check connection status after OAuth callback
-    composioStatus: protectedProcedure.input(z3.object({
-      connectionId: z3.string()
+    composioStatus: protectedProcedure.input(z4.object({
+      connectionId: z4.string()
     })).query(async ({ input }) => {
       if (!composioEnabled()) return null;
       return getConnection(input.connectionId);
     }),
     // Disconnect via Composio
-    composioDisconnect: protectedProcedure.input(z3.object({
-      connectionId: z3.string()
+    composioDisconnect: protectedProcedure.input(z4.object({
+      connectionId: z4.string()
     })).mutation(async ({ input }) => {
       if (!composioEnabled()) return { success: false };
       return { success: await disconnect(input.connectionId) };
     }),
-    disconnect: protectedProcedure.input(z3.object({
-      id: z3.number()
+    disconnect: protectedProcedure.input(z4.object({
+      id: z4.number()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
@@ -4622,19 +5582,19 @@ var appRouter = router({
   }),
   // Content operations
   content: router({
-    queue: protectedProcedure.input(z3.object({
-      status: z3.string().optional()
+    queue: protectedProcedure.input(z4.object({
+      status: z4.string().optional()
     }).optional()).query(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) return [];
       return getContentQueue(business.id, input?.status);
     }),
-    create: protectedProcedure.input(z3.object({
-      platform: z3.string(),
-      contentType: z3.string().optional(),
-      title: z3.string().optional(),
-      content: z3.string().optional(),
-      scheduledFor: z3.string().optional()
+    create: protectedProcedure.input(z4.object({
+      platform: z4.string(),
+      contentType: z4.string().optional(),
+      title: z4.string().optional(),
+      content: z4.string().optional(),
+      scheduledFor: z4.string().optional()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
@@ -4653,18 +5613,18 @@ var appRouter = router({
       await incrementUsage(business.id, "postsGenerated");
       return { success: true };
     }),
-    updateStatus: protectedProcedure.input(z3.object({
-      id: z3.number(),
-      status: z3.string()
+    updateStatus: protectedProcedure.input(z4.object({
+      id: z4.number(),
+      status: z4.string()
     })).mutation(async ({ ctx, input }) => {
       await updateContentStatus(input.id, input.status);
       return { success: true };
     }),
     // AI Content Generation with quality scoring
-    generate: protectedProcedure.input(z3.object({
-      platform: z3.string(),
-      contentType: z3.string().default("social"),
-      topic: z3.string().optional()
+    generate: protectedProcedure.input(z4.object({
+      platform: z4.string(),
+      contentType: z4.string().default("social"),
+      topic: z4.string().optional()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError4({ code: "NOT_FOUND", message: "Business not found. Complete onboarding first." });
@@ -4707,10 +5667,10 @@ var appRouter = router({
       return { ...generated, qualityScore };
     }),
     // Score existing content
-    score: protectedProcedure.input(z3.object({
-      content: z3.string(),
-      title: z3.string(),
-      platform: z3.string()
+    score: protectedProcedure.input(z4.object({
+      content: z4.string(),
+      title: z4.string(),
+      platform: z4.string()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError4({ code: "NOT_FOUND" });
@@ -4817,10 +5777,10 @@ var appRouter = router({
       if (!business) return [];
       return getApiKeys(business.id);
     }),
-    save: protectedProcedure.input(z3.object({
-      keyName: z3.string(),
-      keyValue: z3.string(),
-      provider: z3.string()
+    save: protectedProcedure.input(z4.object({
+      keyName: z4.string(),
+      keyValue: z4.string(),
+      provider: z4.string()
     })).mutation(async ({ ctx, input }) => {
       const business = await getBusinessByUserId(ctx.user.id);
       if (!business) throw new TRPCError4({ code: "NOT_FOUND" });

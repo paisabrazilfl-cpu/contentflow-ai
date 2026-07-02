@@ -14,6 +14,7 @@ import { TRPCError } from "@trpc/server";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { Client } from "pg";
 import { invokeLLM } from "./_core/llm";
+import { runCycle } from "./runtime/autonomous";
 
 const SCHEDULE_MINUTES: Record<string, number> = {
   every_minute: 1,
@@ -249,6 +250,22 @@ export function startCronScheduler() {
         } catch (e) {
           console.error(`[Cron] Job ${job.id} failed:`, e);
         }
+      }
+
+      // Self-improvement: every cycle, also run the autonomous runtime on a self-improvement objective
+      // (skip if there are already many recent cycles in the last hour)
+      try {
+        const recent = await pg.query(
+          `SELECT COUNT(*) as c FROM runtime_cycles WHERE created_at > NOW() - INTERVAL '1 hour'`
+        );
+        const recentCount = parseInt(recent.rows[0]?.c || "0");
+        if (recentCount < 3) {
+          // Run a self-improvement cycle
+          const state = await runCycle("Continuously improve system health, reliability, and performance");
+          console.log(`[SelfImprove] Cycle ${state.cycleId} → status=${state.terminalStatus}, confidence=${state.confidence.toFixed(2)}`);
+        }
+      } catch (e) {
+        // Silent — self-improvement is optional
       }
     } catch (e) {
       console.error("[Cron] Scheduler error:", e);
