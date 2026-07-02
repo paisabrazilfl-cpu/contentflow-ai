@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   ChevronDown, ChevronUp, ExternalLink, Loader2, CheckCircle2, XCircle,
-  Save, Eye, EyeOff, AlertCircle, Zap, Wifi, BookOpen
+  Save, Eye, EyeOff, Zap, Wifi, BookOpen
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -270,15 +270,7 @@ export function ApiKeyManager() {
                     </div>
                   )}
 
-                  {/* Help footer */}
-                  <div className="flex items-start gap-2 p-2 rounded bg-background/50 text-[11px] text-muted-foreground">
-                    <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <strong>How to add this to your deployment:</strong> Set <code className="px-1 py-0.5 bg-background rounded">{provider.id}</code> in
-                      Render's environment variables, then redeploy. System env vars take effect on next boot.
-                    </div>
                   </div>
-                </div>
               )}
             </div>
           );
