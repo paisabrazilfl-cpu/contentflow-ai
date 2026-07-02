@@ -97,7 +97,10 @@ export default function AppLayout({
 
   return (
     <SidebarProvider
-      style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
+      style={{
+        "--sidebar-width": `${sidebarWidth}px`,
+        ...(isMobile ? { "--sidebar-width": "0px" } : {}),
+      } as CSSProperties}
     >
       <AppLayoutContent setSidebarWidth={setSidebarWidth}>
         {children}
@@ -249,7 +252,7 @@ function AppLayoutContent({
             <SidebarTrigger className="h-9 w-9 rounded-lg" />
           </div>
         )}
-        <main className="flex-1 p-6 bg-background min-h-screen">{children}</main>
+        <main className="flex-1 p-3 md:p-6 bg-background min-h-screen overflow-x-hidden">{children}</main>
       </SidebarInset>
     </>
   );

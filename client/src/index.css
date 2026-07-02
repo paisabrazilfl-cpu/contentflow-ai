@@ -128,3 +128,29 @@
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* Mobile fixes — prevent horizontal overflow */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+@media (max-width: 768px) {
+  /* Reduce root font size on mobile for better fit */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  /* Cards, tables, pre all should not overflow */
+  pre, code, table {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  
+  /* Long URLs and text wrap properly */
+  * {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+}
