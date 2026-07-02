@@ -77,27 +77,31 @@ export default function Settings() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 px-2 md:px-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Settings</h1>
-            <p className="text-muted-foreground text-sm mt-1">Configure API keys, team, notifications, and integrations</p>
+            <h1 className="text-xl md:text-2xl font-bold">Settings</h1>
+            <p className="text-muted-foreground text-xs md:text-sm mt-1">Configure API keys, team, notifications, and integrations</p>
           </div>
         </div>
 
         <Tabs defaultValue="apikeys" className="space-y-4">
-          <TabsList className="bg-secondary border border-border">
-            <TabsTrigger value="apikeys" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-              <Key className="w-4 h-4 mr-2" /> API Keys
+          <TabsList className="bg-secondary border border-border w-full grid grid-cols-2 md:flex md:w-auto md:inline-flex">
+            <TabsTrigger value="apikeys" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary text-xs md:text-sm">
+              <Key className="w-3.5 h-3.5 md:w-4 md:h-4 md:mr-2" />
+              <span className="hidden md:inline ml-1.5">API Keys</span>
             </TabsTrigger>
-            <TabsTrigger value="cron" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-              <Clock className="w-4 h-4 mr-2" /> Scheduled Jobs
+            <TabsTrigger value="cron" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary text-xs md:text-sm">
+              <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 md:mr-2" />
+              <span className="hidden md:inline ml-1.5">Scheduled Jobs</span>
             </TabsTrigger>
-            <TabsTrigger value="team" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-              <Users className="w-4 h-4 mr-2" /> Team
+            <TabsTrigger value="team" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary text-xs md:text-sm">
+              <Users className="w-3.5 h-3.5 md:w-4 md:h-4 md:mr-2" />
+              <span className="hidden md:inline ml-1.5">Team</span>
             </TabsTrigger>
-            <TabsTrigger value="export" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-              <Download className="w-4 h-4 mr-2" /> Export
+            <TabsTrigger value="export" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary text-xs md:text-sm">
+              <Download className="w-3.5 h-3.5 md:w-4 md:h-4 md:mr-2" />
+              <span className="hidden md:inline ml-1.5">Export</span>
             </TabsTrigger>
           </TabsList>
 
@@ -109,7 +113,7 @@ export default function Settings() {
                 <CardTitle className="text-base">Add API Key</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <Label className="text-xs">Provider</Label>
                     <Input className="mt-1" placeholder="e.g., OpenAI" value={newKeyProvider} onChange={e => setNewKeyProvider(e.target.value)} />

@@ -158,9 +158,9 @@ export default function Onboarding() {
       <div className="container pt-28 pb-12 max-w-2xl mx-auto">
         {/* Step 1: Business Info */}
         {currentStep === 1 && (
-          <div className="space-y-6">
+          <div className="space-y-4 md:space-y-6 px-2 md:px-0">
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold">Tell us about your business</h2>
+              <h2 className="text-xl md:text-2xl font-bold">Tell us about your business</h2>
               <p className="text-muted-foreground mt-2">We'll use AI to analyze your business and create a custom content strategy.</p>
             </div>
             <div className="space-y-4">
@@ -179,9 +179,9 @@ export default function Onboarding() {
 
         {/* Step 2: AI Business Analysis */}
         {currentStep === 2 && (
-          <div className="space-y-6">
+          <div className="space-y-4 md:space-y-6 px-2 md:px-0">
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold">AI Business Analysis</h2>
+              <h2 className="text-xl md:text-2xl font-bold">AI Business Analysis</h2>
               <p className="text-muted-foreground mt-2">Our AI analyzes your business to create a tailored content strategy.</p>
             </div>
 
@@ -278,9 +278,9 @@ export default function Onboarding() {
 
         {/* Step 3: Platforms */}
         {currentStep === 3 && (
-          <div className="space-y-6">
+          <div className="space-y-4 md:space-y-6 px-2 md:px-0">
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold">Select publishing platforms</h2>
+              <h2 className="text-xl md:text-2xl font-bold">Select publishing platforms</h2>
               <p className="text-muted-foreground mt-2">Choose where you want to publish content.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -304,9 +304,9 @@ export default function Onboarding() {
 
         {/* Step 4: Plan */}
         {currentStep === 4 && (
-          <div className="space-y-6">
+          <div className="space-y-4 md:space-y-6 px-2 md:px-0">
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold">Choose your plan</h2>
+              <h2 className="text-xl md:text-2xl font-bold">Choose your plan</h2>
               <p className="text-muted-foreground mt-2">Start with a 14-day free trial. Cancel anytime.</p>
             </div>
             <div className="grid gap-4">
@@ -342,7 +342,7 @@ export default function Onboarding() {
             <div className="w-20 h-20 rounded-2xl gradient-orange flex items-center justify-center mx-auto">
               <Rocket className="w-10 h-10 text-black" />
             </div>
-            <h2 className="text-2xl font-bold">You're all set!</h2>
+            <h2 className="text-xl md:text-2xl font-bold">You're all set!</h2>
             <p className="text-muted-foreground max-w-md mx-auto">
               Your AI content automation is ready. ContentFlow will start generating and publishing content based on your AI-analyzed strategy.
             </p>

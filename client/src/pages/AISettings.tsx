@@ -118,7 +118,7 @@ export default function AISettings() {
   if (isLoading) {
     return (
       <AppLayout>
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6 px-2 md:px-0">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-64 w-full" />
         </div>
@@ -132,7 +132,7 @@ export default function AISettings() {
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <Bot className="w-12 h-12 mb-4 opacity-30" />
           <p className="text-lg font-medium">No business configured</p>
-          <p className="text-sm mt-1">Complete the onboarding wizard to configure AI settings</p>
+          <p className="text-xs md:text-sm mt-1">Complete the onboarding wizard to configure AI settings</p>
         </div>
       </AppLayout>
     );
@@ -140,11 +140,11 @@ export default function AISettings() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 px-2 md:px-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">AI Content Settings</h1>
-            <p className="text-muted-foreground text-sm mt-1">Configure your AI content generation pipeline</p>
+            <h1 className="text-xl md:text-2xl font-bold">AI Content Settings</h1>
+            <p className="text-muted-foreground text-xs md:text-sm mt-1">Configure your AI content generation pipeline</p>
           </div>
           <Button
             className="gradient-orange text-black font-semibold hover:opacity-90"

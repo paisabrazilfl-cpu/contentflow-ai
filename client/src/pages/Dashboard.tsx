@@ -72,12 +72,12 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 px-2 md:px-0">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Command Center</h1>
-            <p className="text-muted-foreground text-sm mt-1">
+            <h1 className="text-xl md:text-2xl font-bold">Command Center</h1>
+            <p className="text-muted-foreground text-xs md:text-sm mt-1">
               {business ? `${business.name} — AI content automation at a glance` : "Your AI content automation at a glance"}
             </p>
           </div>

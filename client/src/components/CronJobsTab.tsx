@@ -97,9 +97,9 @@ export function CronJobsTab() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 md:space-y-4">
       {/* Stats header */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         <Card className="bg-card border-border">
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Active</p>
@@ -138,8 +138,8 @@ export function CronJobsTab() {
           </div>
         </CardHeader>
         {showForm && (
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+          <CardContent className="space-y-3 md:space-y-4 p-3 md:p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Job name</Label>
                 <Input
@@ -165,7 +165,7 @@ export function CronJobsTab() {
 
             <div>
               <Label className="text-xs">Assign to agent</Label>
-              <div className="mt-2 grid grid-cols-3 gap-2">
+              <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
                 {agents?.map((a: any) => (
                   <button
                     key={a.id}
@@ -229,11 +229,11 @@ export function CronJobsTab() {
               {jobs.map((job: any) => (
                 <div
                   key={job.id}
-                  className="flex items-start justify-between p-4 rounded-lg bg-secondary/30 border border-border"
+                  className="flex items-start justify-between p-3 md:p-4 rounded-lg bg-secondary/30 border border-border gap-2"
                 >
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${AGENT_COLORS[job.agent] || "from-gray-500 to-gray-700"} flex items-center justify-center flex-shrink-0`}>
-                      <Bot className="w-5 h-5 text-white" />
+                  <div className="flex items-start gap-2 md:gap-3 flex-1 min-w-0">
+                    <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg bg-gradient-to-br ${AGENT_COLORS[job.agent] || "from-gray-500 to-gray-700"} flex items-center justify-center flex-shrink-0`}>
+                      <Bot className="w-4 h-4 md:w-5 md:h-5 text-white" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">

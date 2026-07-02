@@ -66,15 +66,15 @@ export default function RuntimeMonitor() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 px-2 md:px-0">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Brain className="w-6 h-6 text-primary" />
+            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <Brain className="w-5 h-5 md:w-6 md:h-6 text-primary" />
               Autonomous Runtime
             </h1>
-            <p className="text-muted-foreground text-sm mt-1">
+            <p className="text-muted-foreground text-xs md:text-sm mt-1">
               Observe → Plan → Execute → Verify → Learn loop. Self-improving, self-healing.
             </p>
           </div>
@@ -85,7 +85,7 @@ export default function RuntimeMonitor() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
           <Card className="bg-card border-border">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -155,7 +155,7 @@ export default function RuntimeMonitor() {
                 onChange={e => setObjective(e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Button
                 onClick={() => runMutation.mutate({ objective })}
                 disabled={isRunning || !objective.trim()}
@@ -197,7 +197,7 @@ export default function RuntimeMonitor() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2 md:gap-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Phase</p>
                   <p className="text-sm font-mono">{current.phase}</p>

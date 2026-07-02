@@ -7,7 +7,7 @@
  * - Hit "Ping" to test the key against the actual API
  * - Hit "Docs" to open the official documentation page
  *
- * Shows live status: configured (with masked value) vs not set
+ * Mobile-responsive: action buttons stack vertically on small screens.
  */
 
 import { useState } from "react";
@@ -46,7 +46,7 @@ export function ApiKeyManager() {
   const [pingResults, setPingResults] = useState<Record<string, PingResult | null>>({});
   const [pingingId, setPingingId] = useState<string | null>(null);
 
-  const { data: providers, refetch } = trpc.apiPing.list.useQuery();
+  const { data: providers } = trpc.apiPing.list.useQuery();
 
   const pingMutation = trpc.apiPing.ping.useMutation({
     onSuccess: (result, variables) => {
@@ -74,7 +74,7 @@ export function ApiKeyManager() {
     setPingResults(prev => ({ ...prev, [provider.id]: null }));
     pingMutation.mutate({
       providerId: provider.id,
-      key: key.trim() || undefined, // empty means use env var
+      key: key.trim() || undefined,
     });
   };
 
@@ -88,9 +88,6 @@ export function ApiKeyManager() {
   };
 
   const handleSave = (providerId: string) => {
-    // Saving from UI requires backend support to update env vars
-    // For now, we just show the value as "configured" locally
-    // Real save would hit Render API which we don't expose
     const draft = drafts[providerId];
     if (draft && draft.trim()) {
       toast.success(
@@ -104,25 +101,17 @@ export function ApiKeyManager() {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  const stats = {
-    configured: providers?.filter(p => p.isSet).length || 0,
-    total: providers?.length || 0,
-    working: Object.values(pingResults).filter(r => r?.ok).length,
-    failing: Object.values(pingResults).filter(r => r && !r.ok).length,
-  };
-
   return (
     <Card className="bg-card border-border">
       <CardHeader>
         <CardTitle className="text-base flex items-center justify-between">
           <span>Required Keys Reference</span>
           <span className="text-xs font-normal text-muted-foreground">
-            {stats.configured} / {stats.total} configured
+            {providers?.filter(p => p.isSet).length || 0} / {providers?.length || 0} configured
           </span>
         </CardTitle>
         <CardDescription className="text-xs">
           Click any service to paste your API key, ping it, or open the official docs to get one.
-          All pings hit the real API to verify the key works.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -138,14 +127,13 @@ export function ApiKeyManager() {
               key={provider.id}
               className="border border-border rounded-lg overflow-hidden bg-secondary/20"
             >
-              {/* Header row — always visible, click to expand */}
               <button
                 type="button"
                 onClick={() => toggleExpanded(provider.id)}
-                className="w-full flex items-center justify-between p-4 hover:bg-secondary/40 transition-colors text-left"
+                className="w-full flex items-center justify-between p-3 md:p-4 hover:bg-secondary/40 transition-colors text-left"
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0 pr-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-semibold">{provider.name}</p>
                     {provider.isSet ? (
                       <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-[10px]">
@@ -158,30 +146,26 @@ export function ApiKeyManager() {
                     )}
                     {pingResult?.ok && (
                       <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px]">
-                        <CheckCircle2 className="w-3 h-3 mr-1" /> Ping OK
+                        <CheckCircle2 className="w-3 h-3 mr-1" /> OK
                       </Badge>
                     )}
                     {pingResult && !pingResult.ok && (
                       <Badge className="bg-red-500/10 text-red-400 border-red-500/20 text-[10px]">
-                        <XCircle className="w-3 h-3 mr-1" /> Ping failed
+                        <XCircle className="w-3 h-3 mr-1" /> Fail
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{provider.description}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{provider.description}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {expanded ? (
-                    <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                  )}
-                </div>
+                {expanded ? (
+                  <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                )}
               </button>
 
-              {/* Expanded body — paste key, ping, docs */}
               {expanded && (
-                <div className="border-t border-border bg-secondary/30 p-4 space-y-3">
-                  {/* Current value (from env) — masked or shown */}
+                <div className="border-t border-border bg-secondary/30 p-3 md:p-4 space-y-3">
                   <div>
                     <Label className="text-xs">
                       {provider.isSet ? "Current key (from env)" : "Paste your key"}
@@ -205,14 +189,13 @@ export function ApiKeyManager() {
                     </div>
                   </div>
 
-                  {/* Action buttons */}
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                     <Button
                       size="sm"
                       variant="default"
                       onClick={() => handlePing(provider)}
                       disabled={isPinging}
-                      className="gradient-orange text-black font-semibold"
+                      className="gradient-orange text-black font-semibold flex-1 sm:flex-none"
                     >
                       {isPinging ? (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -226,6 +209,7 @@ export function ApiKeyManager() {
                       variant="outline"
                       onClick={() => handleSave(provider.id)}
                       disabled={!draftValue.trim()}
+                      className="flex-1 sm:flex-none"
                     >
                       <Save className="w-4 h-4 mr-2" />
                       Save
@@ -234,6 +218,7 @@ export function ApiKeyManager() {
                       size="sm"
                       variant="outline"
                       onClick={() => handleOpenDocs(provider.docsUrl)}
+                      className="flex-1 sm:flex-none"
                     >
                       <BookOpen className="w-4 h-4 mr-2" />
                       Docs
@@ -241,7 +226,6 @@ export function ApiKeyManager() {
                     </Button>
                   </div>
 
-                  {/* Ping result */}
                   {pingResult && (
                     <div
                       className={`p-3 rounded-lg border text-xs space-y-1 ${
@@ -263,14 +247,13 @@ export function ApiKeyManager() {
                           </span>
                         )}
                       </div>
-                      <div className="font-mono opacity-90">{pingResult.message}</div>
+                      <div className="font-mono opacity-90 break-all">{pingResult.message}</div>
                       {pingResult.endpoint && (
                         <div className="opacity-60">endpoint: {pingResult.endpoint}</div>
                       )}
                     </div>
                   )}
-
-                  </div>
+                </div>
               )}
             </div>
           );

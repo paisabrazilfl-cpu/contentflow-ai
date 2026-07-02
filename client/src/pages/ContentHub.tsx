@@ -116,11 +116,11 @@ export default function ContentHub() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 px-2 md:px-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Content Hub</h1>
-            <p className="text-muted-foreground text-sm mt-1">Manage your content queue and publishing pipeline</p>
+            <h1 className="text-xl md:text-2xl font-bold">Content Hub</h1>
+            <p className="text-muted-foreground text-xs md:text-sm mt-1">Manage your content queue and publishing pipeline</p>
           </div>
           <div className="flex gap-3">
             <Button
@@ -237,7 +237,7 @@ export default function ContentHub() {
                 <CardContent className="p-8 flex flex-col items-center justify-center text-muted-foreground">
                   <Inbox className="w-10 h-10 mb-3 opacity-30" />
                   <p className="font-medium">Queue is empty</p>
-                  <p className="text-sm mt-1">Create content or use AI Generate to add items</p>
+                  <p className="text-xs md:text-sm mt-1">Create content or use AI Generate to add items</p>
                 </CardContent>
               </Card>
             ) : (
@@ -284,7 +284,7 @@ export default function ContentHub() {
                 <CardContent className="p-8 flex flex-col items-center justify-center text-muted-foreground">
                   <CheckCircle className="w-10 h-10 mb-3 opacity-30" />
                   <p className="font-medium">No published content yet</p>
-                  <p className="text-sm mt-1">Process your queue to publish content</p>
+                  <p className="text-xs md:text-sm mt-1">Process your queue to publish content</p>
                 </CardContent>
               </Card>
             ) : (

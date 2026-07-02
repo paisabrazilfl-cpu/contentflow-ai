@@ -57,11 +57,11 @@ export default function Analytics() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 px-2 md:px-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Analytics</h1>
-            <p className="text-muted-foreground text-sm mt-1">Track content performance across all platforms</p>
+            <h1 className="text-xl md:text-2xl font-bold">Analytics</h1>
+            <p className="text-muted-foreground text-xs md:text-sm mt-1">Track content performance across all platforms</p>
           </div>
           <Badge variant="outline" className="text-xs">{totalAnalyticsEvents} events tracked</Badge>
         </div>
@@ -75,7 +75,7 @@ export default function Analytics() {
                   <Eye className="w-5 h-5 text-green-400" />
                 </div>
                 <div>
-                  {isLoading ? <Skeleton className="h-7 w-12" /> : <p className="text-2xl font-bold">{totalPublished}</p>}
+                  {isLoading ? <Skeleton className="h-7 w-12" /> : <p className="text-xl md:text-2xl font-bold">{totalPublished}</p>}
                   <p className="text-xs text-muted-foreground">Published</p>
                 </div>
               </div>
@@ -88,7 +88,7 @@ export default function Analytics() {
                   <MousePointer className="w-5 h-5 text-yellow-400" />
                 </div>
                 <div>
-                  {isLoading ? <Skeleton className="h-7 w-12" /> : <p className="text-2xl font-bold">{totalPending}</p>}
+                  {isLoading ? <Skeleton className="h-7 w-12" /> : <p className="text-xl md:text-2xl font-bold">{totalPending}</p>}
                   <p className="text-xs text-muted-foreground">Pending</p>
                 </div>
               </div>
@@ -101,7 +101,7 @@ export default function Analytics() {
                   <TrendingUp className="w-5 h-5 text-red-400" />
                 </div>
                 <div>
-                  {isLoading ? <Skeleton className="h-7 w-12" /> : <p className="text-2xl font-bold">{totalFailed}</p>}
+                  {isLoading ? <Skeleton className="h-7 w-12" /> : <p className="text-xl md:text-2xl font-bold">{totalFailed}</p>}
                   <p className="text-xs text-muted-foreground">Failed</p>
                 </div>
               </div>
@@ -114,7 +114,7 @@ export default function Analytics() {
                   <Globe className="w-5 h-5 text-blue-400" />
                 </div>
                 <div>
-                  {isLoading ? <Skeleton className="h-7 w-12" /> : <p className="text-2xl font-bold">{platformsData?.length || 0}</p>}
+                  {isLoading ? <Skeleton className="h-7 w-12" /> : <p className="text-xl md:text-2xl font-bold">{platformsData?.length || 0}</p>}
                   <p className="text-xs text-muted-foreground">Platforms</p>
                 </div>
               </div>
